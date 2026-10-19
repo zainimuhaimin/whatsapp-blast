@@ -1335,7 +1335,7 @@ onMounted(async () => {
                 <div class="mt-3 max-w-sm">
                   <label class="card-label" for="wf-phone-col">Kolom nomor telepon</label>
                   <select id="wf-phone-col" v-model="filePhoneVar" class="field-input mt-1">
-                    <option value="" disabled>\u2014 pilih kolom \u2014</option>
+                    <option value="" disabled>— pilih kolom —</option>
                     <option v-for="c in fileColumns" :key="c.variable" :value="c.variable">
                       {{ c.header }} → {{ wrapVar(c.variable) }}
                     </option>
@@ -1354,7 +1354,7 @@ onMounted(async () => {
                 <div v-if="filePreview" class="mt-4">
                   <div v-if="filePreview.unknown_variables?.length" class="alert-warning mb-3">
                     <Icon name="alert" :size="15" class="mt-0.5 shrink-0" />
-                    <span>Variabel ini dipakai di pesan tapi <b>tidak ada</b> di file: {{ filePreview.unknown_variables.map(wrapVar).join(', ') }} \u2014 akan ter-render kosong.</span>
+                    <span>Variabel ini dipakai di pesan tapi <b>tidak ada</b> di file: {{ filePreview.unknown_variables.map(wrapVar).join(', ') }} — akan ter-render kosong.</span>
                   </div>
                   <div class="card-label mb-3">
                     {{ filePreview.valid_rows }} baris bernomor valid
