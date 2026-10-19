@@ -12,15 +12,15 @@ CONTACT_FIELDS = {"name", "phone", "tag"}
 class CampaignCreate(BaseModel):
     name: str = Field(min_length=1, max_length=160)
     template_version_id: UUID
-    provider: str = Field(default="official", description="official|unofficial")
+    provider: str = Field(default="official", description="official|unofficial|manual")
     is_test_mode: bool = False
     send_at: datetime | None = None
 
     @field_validator("provider")
     @classmethod
     def _provider(cls, v: str) -> str:
-        if v not in {"official", "unofficial"}:
-            raise ValueError("provider harus 'official' atau 'unofficial'")
+        if v not in {"official", "unofficial", "manual"}:
+            raise ValueError("provider harus 'official', 'unofficial', atau 'manual'")
         return v
 
 
@@ -35,8 +35,8 @@ class CampaignUpdate(BaseModel):
     @field_validator("provider")
     @classmethod
     def _provider(cls, v: str | None) -> str | None:
-        if v is not None and v not in {"official", "unofficial"}:
-            raise ValueError("provider harus 'official' atau 'unofficial'")
+        if v is not None and v not in {"official", "unofficial", "manual"}:
+            raise ValueError("provider harus 'official', 'unofficial', atau 'manual'")
         return v
 
 

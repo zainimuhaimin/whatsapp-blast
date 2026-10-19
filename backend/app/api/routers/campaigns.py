@@ -111,6 +111,12 @@ def retry_recipient(campaign_id: UUID, recipient_id: UUID, request: Request,
         )
     if campaign.status == "cancelled":
         raise HTTPException(status_code=409, detail="campaign sudah dibatalkan")
+    if campaign.provider == "manual":
+        raise HTTPException(
+            status_code=409,
+            detail="campaign jalur manual tidak memakai retry otomatis — "
+                   "kirim ulang via tombol WhatsApp di halaman detail",
+        )
 
     recipient.status = "pending"
     recipient.retry_count = 0
@@ -178,6 +184,19 @@ def manual_recipient_status(campaign_id: UUID, recipient_id: UUID,
     else:
         recipient.last_error = "dilewatkan secara manual oleh pengguna"
     db.commit()
+
+    # Auto-complete: semua penerima sudah resolved (tidak ada pending)
+    if campaign.status == "sending":
+        remaining = (
+            db.query(CampaignRecipient)
+            .filter(CampaignRecipient.campaign_id == campaign.id,
+                    CampaignRecipient.status == "pending")
+            .count()
+        )
+        if remaining == 0:
+            campaign.status = "completed"
+            campaign.finished_at = _now()
+            db.commit()
 
     write_audit(db, "campaign.recipient_manual_status", user_id=user.id,
                 entity_type="campaign", entity_id=str(campaign.id),

@@ -53,6 +53,7 @@ Buka menu **Campaign** → **Campaign Baru**, lalu ikuti wizard:
 3. **Pilih provider:**
    - **Resmi** — untuk blast produksi sungguhan (berbayar per pesan, lihat [providers.md](providers.md)).
    - **Non-resmi (Baileys)** — untuk testing; **jangan pakai nomor WA utama/pribadi Anda** (risiko banned — baca peringatan di [providers.md](providers.md)).
+   - **Manual (via WhatsApp Web)** — tanpa otomasi sama sekali: setelah konfirmasi, kirim per penerima dari halaman detail campaign (klik per penerima → WA Web terbuka dengan pesan ter-render → tandai Terkirim/Lewati). Rp 0, nol risiko banned. Lihat §11.
 4. **Mode test (opsional):** aktifkan untuk latihan — pesan hanya dikirim ke nomor test terdaftar, bukan ke kontak asli. Banner jelas akan tampil di UI agar tidak tertukar.
 5. **Jadwalkan (opsional):** isi tanggal & jam kirim untuk blast terjadwal; kosongkan untuk kirim segera setelah konfirmasi.
 6. **Pilih penerima:** centang kontak (bisa filter per tag). Kontak yang di-blacklist otomatis tidak muncul. Nomor duplikat otomatis dilewati.
@@ -215,6 +216,9 @@ Pembuatan campaign kini **satu tempat**: wizard Campaign Baru. Di **langkah 3 (I
 Setelah diterapkan, lanjut seperti biasa: Mapping (variabel yang sudah terisi dari file tampil sebagai "Terisi AI per penerima" dan tidak perlu di-mapping manual) → Pilih penerima → Review.
 
 ## 11. Kirim Manual via WhatsApp (wa.me)
+
+**Cara manual juga tersedia sebagai pilihan jalur pengiriman** saat membuat campaign (provider **Manual**).
+Pilih ini bila tidak ingin otomasi sama sekali — paling aman dari banned.
 
 Cara paling aman tanpa risiko banned otomasi: di **detail campaign**, buka seksi **Kirim manual via WhatsApp** → klik **Buka di WhatsApp** per penerima. WhatsApp terbuka (HP/desktop) dengan pesan yang sudah ter-render untuk penerima tersebut — tinggal tekan kirim di aplikasi.
 

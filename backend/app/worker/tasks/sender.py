@@ -50,6 +50,18 @@ def dispatch_campaign(self, campaign_id: str):
                      campaign_id, campaign.status)
             return {"skipped": True}
 
+        if campaign.provider == "manual":
+            # Jalur manual: TIDAK ada pengiriman otomatis. Tandai sending
+            # agar user bisa mulai kirim via WA Web di halaman detail.
+            if campaign.status == "queued":
+                campaign.status = "sending"
+                if not campaign.started_at:
+                    campaign.started_at = _now()
+                db.commit()
+            log.info("dispatch_campaign: campaign %s jalur manual, lewati otomasi",
+                     campaign_id)
+            return {"manual": True, "skipped": True}
+
         campaign.status = "sending"
         if not campaign.started_at:
             campaign.started_at = _now()

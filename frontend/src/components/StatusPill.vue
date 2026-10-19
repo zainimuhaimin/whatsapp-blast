@@ -32,6 +32,7 @@ const map = {
   // provider
   official: ['Resmi', 'pill-accent'],
   unofficial: ['Non-resmi', 'pill-warning'],
+  manual: ['Manual', 'pill-info'],
   // umum
   active: ['Aktif', 'pill-positive'],
   inactive: ['Nonaktif', 'pill-neutral'],

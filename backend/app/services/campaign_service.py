@@ -211,6 +211,8 @@ def estimate_cost(db: Session, campaign: Campaign, total: int) -> tuple[float, s
     """
     if campaign.provider == "unofficial":
         return 0.0, "jalur non-resmi (Baileys self-hosted): Rp 0"
+    if campaign.provider == "manual":
+        return 0.0, "jalur manual (WhatsApp Web): Rp 0"
     version: TemplateVersion = campaign.template_version
     prices = get_setting(db, "wa.price_per_message_idr", DEFAULT_PRICES) or DEFAULT_PRICES
     category = version.provider_category or "marketing"
@@ -290,6 +292,9 @@ def build_review(db: Session, campaign: Campaign) -> dict:
 
     rate_limit = int(get_setting(db, "wa.rate_limit_per_hour", 300) or 300)
     cost, cost_note = estimate_cost(db, campaign, total)
+    duration_text = estimate_duration_text(total, rate_limit)
+    if campaign.provider == "manual":
+        duration_text = "manual \u2014 sesuai kecepatan Anda"
 
     return {
         "campaign_id": campaign.id,
@@ -297,7 +302,7 @@ def build_review(db: Session, campaign: Campaign) -> dict:
         "variables": variables_rows,
         "recipient_preview": preview_rows,
         "sample_messages": sample_messages,
-        "estimated_duration": estimate_duration_text(total, rate_limit),
+        "estimated_duration": duration_text,
         "estimated_cost_idr": cost,
         "estimated_cost_note": cost_note,
         "validation_errors": validate_confirm(db, campaign),

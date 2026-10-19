@@ -768,10 +768,13 @@ async function doConfirm() {
 
 const confirmDialogText = computed(() => {
   const total = rvTotal.value
+  const provLabel = rvCampaign.value.provider === 'official' ? 'RESMI' : rvCampaign.value.provider === 'manual' ? 'MANUAL (via WhatsApp Web)' : 'NON-RESMI'
+  const costPart = rvCampaign.value.provider === 'official' ? ` dengan estimasi biaya ${formatRupiah(rvCost.value)}` : ''
+  const manualPart = rvCampaign.value.provider === 'manual' ? ' Pengiriman dilakukan manual per penerima dari halaman detail.' : ''
   if (confirmMode.value === 'schedule') {
-    return `Campaign “${rvCampaign.value.name}” akan DIJADWALKAN ke ${total} penerima pada waktu yang ditentukan, via jalur ${rvCampaign.value.provider === 'official' ? 'RESMI' : 'NON-RESMI'}. Lanjutkan?`
+    return `Campaign “${rvCampaign.value.name}” akan DIJADWALKAN ke ${total} penerima pada waktu yang ditentukan, via jalur ${provLabel}. Lanjutkan?`
   }
-  return `Campaign “${rvCampaign.value.name}” akan DIKIRIM ke ${total} penerima via jalur ${rvCampaign.value.provider === 'official' ? 'RESMI' : 'NON-RESMI'}${rvCampaign.value.provider === 'official' ? ` dengan estimasi biaya ${formatRupiah(rvCost.value)}` : ''}. Tindakan ini tidak bisa dibatalkan untuk pesan yang sudah terkirim. Lanjutkan?`
+  return `Campaign “${rvCampaign.value.name}” akan DIKIRIM ke ${total} penerima via jalur ${provLabel}${costPart}${manualPart}. Tindakan ini tidak bisa dibatalkan untuk pesan yang sudah terkirim. Lanjutkan?`
 })
 
 onMounted(async () => {
@@ -866,8 +869,35 @@ onMounted(async () => {
               <li>Cocok untuk testing template/variabel/AI</li>
             </ul>
           </label>
+          <label
+            class="provider-card"
+            :class="{ selected: form.provider === 'manual' }"
+          >
+            <div class="provider-head">
+              <input type="radio" v-model="form.provider" value="manual" class="radio-accent" />
+              <Icon name="chat" :size="15" class="provider-check" />
+              <span class="font-semibold text-sm">Manual — via WhatsApp Web</span>
+            </div>
+            <ul class="provider-points">
+              <li><b>Rp 0</b> — tanpa otomasi sama sekali</li>
+              <li>Klik per penerima → WA Web terbuka dengan pesan ter-render</li>
+              <li>Nol risiko banned — kirim dari aplikasi resmi</li>
+            </ul>
+          </label>
         </div>
 
+        <div v-if="form.provider === 'manual'" class="alert-info mt-3">
+          <Icon name="info" :size="16" class="mt-0.5 shrink-0" />
+          <div>
+            <div class="alert-title">Cara kerja jalur manual</div>
+            <p class="mt-1">
+              Setelah konfirmasi, buka halaman detail campaign → seksi
+              <b>Kirim manual via WhatsApp</b>. Klik <b>Buka di WhatsApp</b> per penerima —
+              WhatsApp Web terbuka (pastikan sudah login) dengan pesan yang sudah ter-render,
+              tinggal tekan kirim. Tandai <b>Terkirim</b> / <b>Lewati</b> per penerima untuk audit.
+            </p>
+          </div>
+        </div>
         <div v-if="form.provider === 'unofficial'" class="alert-negative mt-3">
           <Icon name="alert" :size="16" class="mt-0.5 shrink-0" />
           <div>

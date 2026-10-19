@@ -62,8 +62,9 @@ const progress = computed(() => {
   return total ? Math.round((done / total) * 100) : 0
 })
 
-const canPause = computed(() => ['queued', 'sending'].includes(campaign.value?.status))
-const canResume = computed(() => campaign.value?.status === 'paused')
+const isManual = computed(() => campaign.value?.provider === 'manual')
+const canPause = computed(() => !isManual.value && ['queued', 'sending'].includes(campaign.value?.status))
+const canResume = computed(() => !isManual.value && campaign.value?.status === 'paused')
 const canCancel = computed(() => ['draft', 'scheduled', 'queued', 'sending', 'paused'].includes(campaign.value?.status))
 const isLive = computed(() => ['queued', 'sending', 'paused'].includes(campaign.value?.status))
 
@@ -163,6 +164,13 @@ async function loadChatLinks() {
   }
 }
 
+async function maybeAutoOpenChatLinks() {
+  if (isManual.value && ['queued', 'sending', 'paused'].includes(campaign.value?.status) && !chatLinks.value.length) {
+    showChatLinks.value = true
+    await loadChatLinks()
+  }
+}
+
 async function toggleChatLinks() {
   showChatLinks.value = !showChatLinks.value
   if (showChatLinks.value && !chatLinks.value.length) await loadChatLinks()
@@ -189,6 +197,7 @@ async function markManual(link, result) {
 
 onMounted(async () => {
   await refreshAll()
+  await maybeAutoOpenChatLinks()
   // Auto-refresh saat campaign sedang berjalan
   pollTimer = setInterval(async () => {
     if (isLive.value) {
@@ -218,6 +227,18 @@ onUnmounted(() => {
           <span>Provider <StatusPill v-if="campaign" :status="campaign.provider" /></span>
           <span v-if="campaign?.is_test_mode" class="pill pill-warning">Mode test</span>
           <span v-if="campaign?.send_at" class="meta-inline"><Icon name="calendar" :size="13" /> {{ formatDateTime(campaign.send_at) }}</span>
+        </div>
+      </div>
+      <div v-if="isManual && ['queued', 'sending'].includes(campaign?.status)" class="alert-info mt-3">
+        <Icon name="info" :size="16" class="mt-0.5 shrink-0" />
+        <div>
+          <div class="alert-title">Jalur manual — kirim via WhatsApp Web</div>
+          <p class="mt-1">
+            Tidak ada pengiriman otomatis. Buka seksi <b>Kirim manual via WhatsApp</b> di bawah,
+            klik <b>Buka di WhatsApp</b> per penerima (pastikan WA Web sudah login),
+            kirim pesannya, lalu tandai <b>Terkirim</b> / <b>Lewati</b>.
+            Campaign selesai otomatis bila semua penerima sudah ditandai.
+          </p>
         </div>
       </div>
       <div class="title-actions">
