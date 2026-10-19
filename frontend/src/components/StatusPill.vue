@@ -24,6 +24,7 @@ const map = {
   sent: ['Terkirim', 'pill-info'],
   delivered: ['Diterima', 'pill-positive'],
   read: ['Dibaca', 'pill-accent'],
+  skipped: ['Dilewati', 'pill-neutral'],
   // template approval
   approved: ['Disetujui', 'pill-positive'],
   submitted: ['Diajukan', 'pill-warning'],

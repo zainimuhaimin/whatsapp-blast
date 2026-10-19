@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { campaignsApi, templatesApi, contactsApi, testNumbersApi, settingsApi } from '../api/client'
 import { useToast } from '../stores/useToast'
@@ -82,6 +82,77 @@ const selectedVariables = computed(() =>
 
 /* --------------------------- Langkah 3: AI ------------------------------ */
 const aiMode = ref('recipients') // 'recipients' | 'general'
+
+// --- Ubah pesan: fleksibel seperti Blast dari File ---
+// Pesan tidak harus terpaku template — teksnya bisa diedit di sini,
+// lalu disimpan sebagai versi template baru khusus campaign ini.
+const showMsgEdit = ref(false)
+const msgEdit = ref('')
+const msgEditRef = ref(null)
+const msgSaving = ref(false)
+const msgEditVars = computed(() => extractVariables(msgEdit.value || ''))
+const msgEditChips = computed(() => {
+  const seen = []
+  for (const v of [...selectedVariables.value, ...msgEditVars.value]) {
+    if (!seen.includes(v)) seen.push(v)
+  }
+  return seen
+})
+
+function openMsgEdit() {
+  msgEdit.value = selectedVersion.value?.version?.body || ''
+  showMsgEdit.value = true
+}
+
+function insertMsgVar(v) {
+  const tag = wrapVar(v)
+  const el = msgEditRef.value
+  if (!el) {
+    msgEdit.value += tag
+    return
+  }
+  const start = el.selectionStart ?? msgEdit.value.length
+  const end = el.selectionEnd ?? start
+  msgEdit.value = msgEdit.value.slice(0, start) + tag + msgEdit.value.slice(end)
+  nextTick(() => {
+    el.focus()
+    el.selectionStart = el.selectionEnd = start + tag.length
+  })
+}
+
+async function saveMsgEdit() {
+  if (!msgEdit.value.trim()) {
+    toast.error('Isi pesan tidak boleh kosong.')
+    return
+  }
+  if (!campaign.value) return
+  msgSaving.value = true
+  try {
+    const res = await campaignsApi.updateMessageBody(campaign.value.id, msgEdit.value)
+    // Arahkan wizard ke versi baru
+    selectedVersion.value.version = {
+      ...selectedVersion.value.version,
+      id: res.template_version_id,
+      version_number: res.version_number,
+      variables: res.variables,
+      body: msgEdit.value,
+    }
+    if (campaign.value.template_version) {
+      campaign.value.template_version = {
+        ...campaign.value.template_version,
+        id: res.template_version_id,
+        version_number: res.version_number,
+        variables: res.variables,
+        body: msgEdit.value,
+      }
+    }
+    mappings.value = [] // paksa rebuild mapping di langkah 4
+    showMsgEdit.value = false
+    toast.success(`Pesan disimpan sebagai versi ${res.version_number}.`)
+  } finally {
+    msgSaving.value = false
+  }
+}
 
 // --- Mode lama: nilai umum (sama untuk semua penerima) ---
 const aiText = ref('')
@@ -824,6 +895,45 @@ onMounted(async () => {
         </div>
       </div>
 
+      <!-- Ubah pesan: fleksibel seperti Blast dari File -->
+      <div v-if="selectedVersion" class="msg-edit-card">
+        <button @click="showMsgEdit ? (showMsgEdit = false) : openMsgEdit()" class="msg-edit-toggle" type="button">
+          <Icon name="pencil" :size="14" />
+          {{ showMsgEdit ? 'Tutup editor pesan' : 'Ubah pesan (fleksibel)' }}
+        </button>
+        <p class="card-label mt-1">Pesan tidak harus terpaku template — ubah teksnya di sini, variabel tetap bisa dipakai.</p>
+        <div v-if="showMsgEdit" class="mt-3">
+          <div class="chip-row mb-2">
+            <span class="card-label">Klik untuk tempel di kursor:</span>
+            <button
+              v-for="v in msgEditChips"
+              :key="v"
+              @click="insertMsgVar(v)"
+              class="chip-var chip-click mono"
+              type="button"
+            >
+              {{ wrapVar(v) }}
+            </button>
+          </div>
+          <textarea
+            ref="msgEditRef"
+            v-model="msgEdit"
+            rows="6"
+            class="field-input"
+            placeholder="Tulis pesan…"
+          />
+          <div class="mt-2">
+            <button @click="saveMsgEdit" :disabled="msgSaving" class="btn btn-accent text-sm" type="button">
+              <Icon name="check" :size="14" /> {{ msgSaving ? 'Menyimpan…' : 'Simpan sebagai versi baru' }}
+            </button>
+          </div>
+          <p class="card-label mt-2">
+            Menyimpan membuat <b>versi template baru</b> khusus campaign ini — template aslinya tidak berubah,
+            mapping yang sudah ada ikut terbawa.
+          </p>
+        </div>
+      </div>
+
       <!-- ===== Mode: daftar penerima (nilai beda per orang) ===== -->
       <template v-if="aiMode === 'recipients'">
         <p class="card-label -mt-2">
@@ -1426,6 +1536,28 @@ onMounted(async () => {
 .review-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 .wizard-nav { display: flex; justify-content: space-between; margin-top: 24px; gap: 8px; }
 .wizard-nav-start { justify-content: flex-start; }
+
+/* Editor pesan fleksibel (langkah 3) */
+.msg-edit-card {
+  border: 1px dashed var(--rule);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  background: var(--ground);
+}
+.msg-edit-toggle {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: none; border: 0; cursor: pointer;
+  color: var(--accent-ink); font-weight: 600; font-size: 14px; padding: 0;
+}
+.msg-edit-toggle:hover { text-decoration: underline; }
+.chip-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.chip-var {
+  display: inline-block; padding: 4px 10px; border-radius: var(--radius-pill);
+  background: var(--accent-soft); color: var(--accent-ink);
+  font-size: 13px; border: 1px solid transparent;
+}
+button.chip-var.chip-click { cursor: pointer; }
+button.chip-var.chip-click:hover { border-color: var(--accent); }
 
 @media (max-width: 1023px) {
   .kpi-4 { grid-template-columns: repeat(2, 1fr); }

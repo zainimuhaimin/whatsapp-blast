@@ -52,11 +52,12 @@ const STATUS_FILTERS = [
   { value: 'delivered', label: 'Diterima' },
   { value: 'read', label: 'Dibaca' },
   { value: 'failed', label: 'Gagal' },
+  { value: 'skipped', label: 'Dilewati' },
 ]
 
 const progress = computed(() => {
   if (!stats.value) return 0
-  const done = ['sent', 'delivered', 'read', 'failed'].reduce((a, k) => a + Number(stats.value[k] || 0), 0)
+  const done = ['sent', 'delivered', 'read', 'failed', 'skipped'].reduce((a, k) => a + Number(stats.value[k] || 0), 0)
   const total = done + Number(stats.value.pending || 0)
   return total ? Math.round((done / total) * 100) : 0
 })
@@ -167,6 +168,25 @@ async function toggleChatLinks() {
   if (showChatLinks.value && !chatLinks.value.length) await loadChatLinks()
 }
 
+// Tandai hasil pengiriman manual (audit): 'sent' = terkirim, 'skipped' = dilewatkan
+const manualActing = ref(false)
+async function markManual(link, result) {
+  manualActing.value = true
+  try {
+    await campaignsApi.manualStatus(id, link.recipient_id, result)
+    toast.success(
+      result === 'sent'
+        ? `${link.phone} ditandai terkirim.`
+        : `${link.phone} dilewatkan.`
+    )
+    await loadChatLinks()
+    await loadStats()
+    await loadRecipients()
+  } finally {
+    manualActing.value = false
+  }
+}
+
 onMounted(async () => {
   await refreshAll()
   // Auto-refresh saat campaign sedang berjalan
@@ -219,7 +239,7 @@ onUnmounted(() => {
         <h2 class="section-title">Ringkasan pengiriman</h2>
         <span v-if="isLive" class="live-dot"><span class="dot"></span> auto-refresh 15 dtk</span>
       </div>
-      <div class="kpi-strip kpi-5">
+      <div class="kpi-strip kpi-6">
         <div class="kpi-cell">
           <div class="kpi-label">Menunggu</div>
           <div class="kpi-value num">{{ formatNumber(stats?.pending) }}</div>
@@ -239,6 +259,10 @@ onUnmounted(() => {
         <div class="kpi-cell">
           <div class="kpi-label">Gagal</div>
           <div class="kpi-value num kpi-bad">{{ formatNumber(stats?.failed) }}</div>
+        </div>
+        <div class="kpi-cell">
+          <div class="kpi-label">Dilewati</div>
+          <div class="kpi-value num">{{ formatNumber(stats?.skipped) }}</div>
         </div>
       </div>
       <div class="progress-track" role="progressbar" :aria-valuenow="progress" aria-valuemin="0" aria-valuemax="100">
@@ -354,9 +378,20 @@ onUnmounted(() => {
                 <div class="whitespace-pre-wrap break-words">{{ truncate(l.message, 200) }}</div>
               </td>
               <td class="whitespace-nowrap">
-                <a :href="l.wa_url" target="_blank" rel="noopener" class="btn btn-secondary text-sm">
-                  <Icon name="external" :size="14" /> Buka di WhatsApp
-                </a>
+                <div class="manual-actions">
+                  <a :href="l.wa_url" target="_blank" rel="noopener" class="btn btn-secondary text-sm">
+                    <Icon name="external" :size="14" /> Buka di WhatsApp
+                  </a>
+                  <div v-if="!['sent', 'delivered', 'read'].includes(l.status)" class="manual-mark">
+                    <button @click="markManual(l, 'sent')" :disabled="manualActing" class="btn btn-tertiary text-sm" title="Tandai sudah terkirim manual (audit)">
+                      <Icon name="check" :size="14" /> Terkirim
+                    </button>
+                    <button @click="markManual(l, 'skipped')" :disabled="manualActing" class="btn btn-tertiary text-sm" title="Lewati penerima ini (audit)">
+                      <Icon name="x" :size="14" /> Lewati
+                    </button>
+                  </div>
+                  <div v-else class="card-label text-xs manual-done"><Icon name="check" :size="12" /> hasil manual tercatat</div>
+                </div>
               </td>
             </tr>
           </template>
@@ -402,10 +437,13 @@ onUnmounted(() => {
 .title-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 8px; font-size: 13px; color: var(--muted); }
 .meta-inline { display: inline-flex; align-items: center; gap: 6px; }
 .title-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.manual-actions { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.manual-mark { display: flex; gap: 6px; flex-wrap: wrap; }
+.manual-done { display: inline-flex; align-items: center; gap: 4px; }
 .summary-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
 .live-dot { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--accent-ink); background: var(--accent-soft); padding: 4px 10px; border-radius: 999px; }
 .live-dot .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
-.kpi-5 { grid-template-columns: repeat(5, 1fr); margin-bottom: 16px; }
+.kpi-6 { grid-template-columns: repeat(6, 1fr); margin-bottom: 16px; }
 .kpi-bad { color: var(--negative); }
 .progress-track {
   height: 8px; border-radius: 999px;
@@ -419,14 +457,14 @@ onUnmounted(() => {
 }
 .filter-select { width: auto; min-height: 32px; font-size: 13px; }
 @media (max-width: 1023px) {
-  .kpi-5 { grid-template-columns: repeat(3, 1fr); }
-  .kpi-5 > .kpi-cell:nth-child(3n+1) { border-left: 0; }
-  .kpi-5 > .kpi-cell:nth-child(n+4) { border-top: 1px solid var(--rule); }
+  .kpi-6 { grid-template-columns: repeat(3, 1fr); }
+  .kpi-6 > .kpi-cell:nth-child(3n+1) { border-left: 0; }
+  .kpi-6 > .kpi-cell:nth-child(n+4) { border-top: 1px solid var(--rule); }
 }
 @media (max-width: 639px) {
-  .kpi-5 { grid-template-columns: repeat(2, 1fr); }
-  .kpi-5 > .kpi-cell:nth-child(odd) { border-left: 0; }
-  .kpi-5 > .kpi-cell:nth-child(n+3) { border-top: 1px solid var(--rule); }
+  .kpi-6 { grid-template-columns: repeat(2, 1fr); }
+  .kpi-6 > .kpi-cell:nth-child(odd) { border-left: 0; }
+  .kpi-6 > .kpi-cell:nth-child(n+3) { border-top: 1px solid var(--rule); }
   .title-actions .btn { flex: 1; }
 }
 </style>

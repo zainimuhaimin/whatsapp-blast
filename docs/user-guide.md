@@ -64,6 +64,11 @@ Buka menu **Campaign** → **Campaign Baru**, lalu ikuti wizard:
 > tempel di kolom API Key, pilih model (mis. `gemini-2.5-flash`), lalu klik **🔌 Test koneksi**
 > untuk memastikan key valid. Key tersimpan aman — tidak pernah ditampilkan utuh.
 
+> **Pesan fleksibel:** pesan tidak harus terpaku template. Di langkah ini ada tombol
+> **Ubah pesan (fleksibel)** — teks pesan bisa diedit bebas (variabel tetap bisa ditempel),
+> lalu disimpan sebagai **versi template baru** khusus campaign ini. Template aslinya tidak berubah,
+> dan mapping yang sudah ada ikut terbawa.
+
 Langkah ini punya **dua mode**:
 
 ### Mode "Daftar penerima" — nilai berbeda per orang (default)
@@ -217,6 +222,12 @@ Cara paling aman tanpa risiko banned otomasi: di **detail campaign**, buka seksi
 - Tidak perlu Baileys terhubung, tidak perlu kredensial Meta.
 - Cocok untuk batch kecil/sensitif atau saat jalur otomatis bermasalah.
 - Link berbentuk `wa.me/<nomor>?text=<pesan>` — nomor otomatis diformat internasional tanpa `+`.
+
+**Konfirmasi hasil manual (audit):** setelah mengirim via tombol di atas, tandai hasilnya per penerima:
+- **Terkirim** — penerima dicatat berstatus `sent` (masuk statistik + audit log).
+- **Lewati** — penerima dicatat `skipped` (tidak dihitung terkirim, tercatat di audit log).
+
+Tombol ini hanya muncul untuk penerima yang belum terkirim — aman dari dobel catat.
 
 ---
 

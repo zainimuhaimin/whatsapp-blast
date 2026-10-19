@@ -28,7 +28,7 @@ api_router.include_router(sender.router)
 
 # Versi backend — naikkan setiap ada perubahan backend agar mudah
 # memastikan backend yang berjalan sudah yang terbaru (lihat footer UI).
-APP_VERSION = "2026-10-19g"
+APP_VERSION = "2026-10-19h"
 
 
 @api_router.get("/version", include_in_schema=False)

@@ -136,6 +136,123 @@ def retry_recipient(campaign_id: UUID, recipient_id: UUID, request: Request,
             "status": "pending", "requeued": requeued}
 
 
+@router.post("/{campaign_id}/recipients/{recipient_id}/manual-status")
+def manual_recipient_status(campaign_id: UUID, recipient_id: UUID,
+                            payload: dict, request: Request,
+                            db: Session = Depends(get_db),
+                            user: User = Depends(get_current_user)):
+    """
+    Tandai hasil pengiriman manual (wa.me) untuk audit:
+    status 'sent' (terkirim manual) atau 'skipped' (dilewatkan).
+    Tidak me-trigger dispatch otomatis.
+    """
+    campaign = _get_campaign_or_404(db, campaign_id)
+    recipient = (
+        db.query(CampaignRecipient)
+        .filter(CampaignRecipient.id == recipient_id,
+                CampaignRecipient.campaign_id == campaign.id)
+        .first()
+    )
+    if not recipient:
+        raise HTTPException(status_code=404, detail="penerima tidak ditemukan")
+    new_status = (payload.get("status") or "").strip().lower()
+    if new_status not in ("sent", "skipped"):
+        raise HTTPException(
+            status_code=400,
+            detail="status harus 'sent' (terkirim) atau 'skipped' (dilewatkan)",
+        )
+    if campaign.status == "cancelled":
+        raise HTTPException(status_code=409, detail="campaign sudah dibatalkan")
+    if recipient.status in ("sent", "delivered", "read"):
+        raise HTTPException(
+            status_code=409,
+            detail=f"penerima sudah berstatus '{recipient.status}', tidak perlu ditandai lagi",
+        )
+
+    old_status = recipient.status
+    recipient.status = new_status
+    recipient.next_retry_at = None
+    if new_status == "sent":
+        recipient.sent_at = _now()
+        recipient.last_error = None
+    else:
+        recipient.last_error = "dilewatkan secara manual oleh pengguna"
+    db.commit()
+
+    write_audit(db, "campaign.recipient_manual_status", user_id=user.id,
+                entity_type="campaign", entity_id=str(campaign.id),
+                metadata={"recipient_id": str(recipient.id),
+                          "phone": recipient.phone,
+                          "old_status": old_status, "new_status": new_status},
+                ip_address=_ip(request))
+    return {"ok": True, "recipient_id": str(recipient.id),
+            "old_status": old_status, "status": new_status}
+
+
+@router.post("/{campaign_id}/message-body")
+def update_message_body(campaign_id: UUID, payload: dict, request: Request,
+                        db: Session = Depends(get_db),
+                        user: User = Depends(get_current_user)):
+    """
+    Ubah teks pesan campaign secara fleksibel (mis. setelah input AI):
+    membuat versi template BARU (immutable versioning) dan mengarahkan
+    campaign ke versi tersebut. Mapping yang sudah ada ikut terbawa
+    karena keyed by nama variabel.
+    """
+    from app.services import renderer
+
+    campaign = _get_campaign_or_404(db, campaign_id)
+    _require_editable(campaign)
+    body = (payload.get("body") or "").strip()
+    if not body:
+        raise HTTPException(status_code=400, detail="isi pesan tidak boleh kosong")
+    if len(body) > 10000:
+        raise HTTPException(status_code=400, detail="isi pesan maksimal 10000 karakter")
+
+    variables = renderer.extract_variables(body)
+    current = db.get(TemplateVersion, campaign.template_version_id)
+    if current and (current.body or "").strip() == body:
+        # Tidak ada perubahan — kembalikan versi yang sedang dipakai
+        write_audit(db, "campaign.message_body_update", user_id=user.id,
+                    entity_type="campaign", entity_id=str(campaign.id),
+                    metadata={"template_version_id": str(current.id),
+                              "version_number": current.version_number,
+                              "variables": current.variables, "unchanged": True},
+                    ip_address=_ip(request))
+        return {"ok": True,
+                "template_version_id": str(current.id),
+                "version_number": current.version_number,
+                "variables": current.variables,
+                "unchanged": True}
+    max_vn = (
+        db.query(func.max(TemplateVersion.version_number))
+        .filter(TemplateVersion.template_id == current.template_id)
+        .scalar()
+        or 0
+    )
+    version = TemplateVersion(
+        template_id=current.template_id,
+        version_number=max_vn + 1,
+        body=body,
+        variables=variables,
+    )
+    db.add(version)
+    db.flush()
+    campaign.template_version_id = version.id
+    db.commit()
+
+    write_audit(db, "campaign.message_body_update", user_id=user.id,
+                entity_type="campaign", entity_id=str(campaign.id),
+                metadata={"template_version_id": str(version.id),
+                          "version_number": version.version_number,
+                          "variables": variables},
+                ip_address=_ip(request))
+    return {"ok": True,
+            "template_version_id": str(version.id),
+            "version_number": version.version_number,
+            "variables": variables}
+
+
 @router.get("/{campaign_id}/chat-links")
 def chat_links(campaign_id: UUID,
                page: int = Query(default=1, ge=1),
@@ -247,6 +364,7 @@ def get_campaign(campaign_id: UUID, db: Session = Depends(get_db),
     out["template_version"] = {
         "id": str(version.id),
         "version_number": version.version_number,
+        "body": version.body,
         "variables": version.variables,
         "approval_status": version.approval_status,
         "provider_category": version.provider_category,
@@ -829,6 +947,7 @@ def campaign_stats(campaign_id: UUID, db: Session = Depends(get_db),
         delivered=counts.get("delivered", 0),
         read=counts.get("read", 0),
         failed=counts.get("failed", 0),
+        skipped=counts.get("skipped", 0),
         total=total,
     )
 

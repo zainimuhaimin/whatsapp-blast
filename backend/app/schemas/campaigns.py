@@ -232,6 +232,7 @@ class StatsOut(BaseModel):
     delivered: int = 0
     read: int = 0
     failed: int = 0
+    skipped: int = 0
     total: int = 0
 
 

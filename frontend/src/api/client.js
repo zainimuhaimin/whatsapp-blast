@@ -146,6 +146,10 @@ export const campaignsApi = {
     http.get(`/campaigns/${id}/recipients`, params(q)).then(unwrapPage),
   retryRecipient: (id, recipientId) =>
     http.post(`/campaigns/${id}/recipients/${recipientId}/retry`).then((r) => r.data),
+  manualStatus: (id, recipientId, status) =>
+    http.post(`/campaigns/${id}/recipients/${recipientId}/manual-status`, { status }).then((r) => r.data),
+  updateMessageBody: (id, body) =>
+    http.post(`/campaigns/${id}/message-body`, { body }).then((r) => r.data),
 
   review: (id) => http.get(`/campaigns/${id}/review`).then((r) => r.data),
   confirm: (id) => http.post(`/campaigns/${id}/confirm`).then((r) => r.data),
