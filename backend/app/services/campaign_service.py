@@ -66,20 +66,31 @@ def resolve_values(
     db: Session, campaign: Campaign, recipient: CampaignRecipient
 ) -> dict[str, str]:
     """
-    Hitung nilai tiap variabel untuk satu penerima:
-    - source 'contact' -> ambil dari field kontak (name/phone/tag); kosong bila tanpa kontak
-    - source 'campaign' -> nilai hasil AI / edit manual (sama untuk semua penerima)
+    Hitung nilai tiap variabel untuk satu penerima. Urutan prioritas:
+    1. override per-penerima (hasil AI per baris / edit manual) — paling spesifik
+    2. source 'campaign' -> nilai hasil AI / edit manual (sama untuk semua penerima)
+    3. source 'contact' -> ambil dari field kontak (name/phone/tag); kosong bila tanpa kontak
     """
     mappings = get_mappings(db, campaign.id)
     contact = None
     if recipient.contact_id:
         contact = db.get(Contact, recipient.contact_id)
+    overrides = {
+        rv.variable_name: (rv.value or "")
+        for rv in (recipient.variable_overrides or [])
+    }
     values: dict[str, str] = {}
     for name, m in mappings.items():
-        if m.source == "contact":
+        if name in overrides:
+            values[name] = overrides[name]
+        elif m.source == "contact":
             values[name] = getattr(contact, m.contact_field, "") if contact and m.contact_field else ""
         else:
             values[name] = m.value or ""
+    # Variabel yang hanya punya override per-penerima (tanpa mapping) tetap dipakai
+    for name, val in overrides.items():
+        if name not in values:
+            values[name] = val
     return values
 
 

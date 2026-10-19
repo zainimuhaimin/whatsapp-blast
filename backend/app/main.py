@@ -69,9 +69,34 @@ def _seed_settings() -> None:
         db.close()
 
 
+def _drop_legacy_recipient_unique() -> None:
+    """
+    DB lama (dibuat sebelum 2026-10-19) punya UNIQUE(campaign_id, phone) di
+    campaign_recipients yang kini dihapus dari model agar satu nomor boleh
+    menerima beberapa pesan berbeda dalam satu campaign. create_all() tidak
+    menurunkan constraint, jadi hapus manual bila masih ada. Aman & idempoten.
+    """
+    from sqlalchemy import text
+    db = SessionLocal()
+    try:
+        db.execute(text(
+            "ALTER TABLE campaign_recipients "
+            "DROP CONSTRAINT IF EXISTS campaign_recipients_campaign_id_phone_key"
+        ))
+        # Nama constraint bawaan Postgres untuk UniqueConstraint tanpa nama
+        # eksplisit adalah {tabel}_{kolom1}_{kolom2}_key.
+        db.commit()
+    except Exception as exc:  # bukan Postgres / tabel belum ada -> abaikan
+        db.rollback()
+        log.debug("drop legacy unique dilewati (%s)", exc)
+    finally:
+        db.close()
+
+
 @app.on_event("startup")
 def on_startup() -> None:
     Base.metadata.create_all(bind=engine)
+    _drop_legacy_recipient_unique()
     _seed_admin()
     _seed_settings()
     log.info("startup selesai: tabel siap, seed admin & settings dicek")

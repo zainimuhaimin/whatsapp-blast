@@ -64,6 +64,42 @@ Buka menu **Campaign** → **Campaign Baru**, lalu ikuti wizard:
 > tempel di kolom API Key, pilih model (mis. `gemini-2.5-flash`), lalu klik **🔌 Test koneksi**
 > untuk memastikan key valid. Key tersimpan aman — tidak pernah ditampilkan utuh.
 
+Langkah ini punya **dua mode**:
+
+### Mode "Daftar penerima" — nilai berbeda per orang (default)
+
+Untuk kasus seperti info maintenance ke banyak pos: tiap penerima punya nilai variabel
+sendiri-sendiri (nama pos dan alamat pos berbeda per baris).
+
+Tempel **daftar penerima** dalam teks bebas (satu entri per baris/blok — nama, nomor HP,
+dan data pendukungnya). AI akan memecahnya menjadi **satu baris per penerima** beserta
+nilai variabel masing-masing. Contoh input:
+
+> informasi maintenance untuk 2 pos berikut :
+> 1. POS Buol
+> Ruben
+> +62 877-2896-3152
+> Jl. MA Turungku Kel. Kali Kec. Biau Kab. Buol
+>
+> 2. POS Donggala Balaesang
+> Rivan
+> +62 877-2896-3152
+> Jl. Trans Sulawesi Palu - Sabang Desa Tambu Kec. Balaesang Lantai 2
+
+Hasil parse AI tampil sebagai **tabel yang bisa Anda edit** (nama, nomor, tiap kolom
+variabel) sebelum disimpan — ini langkah "cek nilai" Anda. Baris bisa dihapus atau
+ditambah manual. Saat klik **Simpan sebagai penerima**:
+
+- nomor dinormalisasi otomatis (`+62 877-2896-3152` → `6287728963152`),
+- kontak yang nomornya sudah ada **dikenali** (tidak dobel), kontak baru **dibuat otomatis**,
+- tiap baris menjadi **satu penerima** dengan nilai variabelnya sendiri.
+
+**Satu nomor boleh muncul berkali-kali** — tiap baris tetap menjadi satu pesan terkirim
+(mis. satu PIC menerima 2 pesan berbeda untuk 2 pos). Nilai per penerima ini mengalahkan
+mapping campaign dan field kontak saat pesan di-render.
+
+### Mode "Nilai umum" — sama untuk semua penerima
+
 Di langkah ini Anda cukup menulis **teks bebas** berisi info campaign, lalu AI (Google Gemini) mengekstrak nilai tiap variabel. Hasilnya **selalu bisa Anda edit manual** sebelum lanjut.
 
 **Contoh konkret:**
@@ -83,7 +119,7 @@ AI mengekstrak:
 
 `nama` tidak diisi AI — karena nama tiap penerima berbeda, ia diambil dari data kontak (lihat langkah mapping di bawah).
 
-**Penting:** AI hanya mengisi variabel yang nilainya **sama untuk semua penerima** (seperti isi promo). AI **tidak akan pernah** mengarang data personal penerima — itu selalu datang dari database kontak Anda.
+**Penting:** mode ini hanya mengisi variabel yang nilainya **sama untuk semua penerima** (seperti isi promo). Untuk nilai yang berbeda per penerima, pakai mode "Daftar penerima" di atas.
 
 ## 5. Mapping Variabel
 

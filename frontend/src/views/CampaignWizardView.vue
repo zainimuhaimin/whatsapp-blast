@@ -81,6 +81,9 @@ const selectedVariables = computed(() =>
 )
 
 /* --------------------------- Langkah 3: AI ------------------------------ */
+const aiMode = ref('recipients') // 'recipients' | 'general'
+
+// --- Mode lama: nilai umum (sama untuk semua penerima) ---
 const aiText = ref('')
 const aiLoading = ref(false)
 const aiResult = ref(null) // {variable: value}
@@ -107,6 +110,87 @@ async function runAiExtract() {
     aiNote.value = 'Layanan AI tidak tersedia saat ini. Anda tetap bisa mengisi nilai variabel secara manual di langkah 4.'
   } finally {
     aiLoading.value = false
+  }
+}
+
+// --- Mode baru: daftar penerima (nilai berbeda per penerima) ---
+const aiRecText = ref('')
+const aiRecLoading = ref(false)
+const aiRecApplying = ref(false)
+const aiRecItems = ref([]) // [{phone, name, variables:{}, phone_valid, phone_normalized, contact_exists, contact_name}]
+const aiRecNote = ref('')
+const aiRecDone = ref(null) // ringkasan setelah apply
+
+async function runAiParseRecipients() {
+  if (!aiRecText.value.trim()) {
+    toast.warning('Tempel dulu daftar penerima sebelum diproses AI.')
+    return
+  }
+  if (!campaign.value) return
+  aiRecLoading.value = true
+  aiRecItems.value = []
+  aiRecNote.value = ''
+  aiRecDone.value = null
+  try {
+    const data = await campaignsApi.aiParseRecipients(campaign.value.id, aiRecText.value.trim())
+    aiRecItems.value = (data.items || []).map((it) => ({
+      phone: it.phone || '',
+      name: it.name || '',
+      variables: { ...(it.variables || {}) },
+      phone_valid: !!it.phone_valid,
+      phone_normalized: it.phone_normalized || '',
+      contact_exists: !!it.contact_exists,
+      contact_name: it.contact_name || '',
+    }))
+    if (data.ai_available === false) {
+      aiRecNote.value = 'Layanan AI tidak tersedia. Periksa API key Gemini di Pengaturan.'
+    } else if (!aiRecItems.value.length) {
+      aiRecNote.value = 'AI tidak menemukan daftar penerima di teks. Coba format bernomor/bullet per baris.'
+    } else {
+      const invalid = aiRecItems.value.filter((r) => !r.phone_valid).length
+      toast.success(`AI menemukan ${aiRecItems.value.length} penerima.` + (invalid ? ` ${invalid} nomor perlu diperbaiki.` : ''))
+    }
+  } catch (e) {
+    aiRecNote.value = 'Gagal memproses dengan AI. Coba lagi.'
+  } finally {
+    aiRecLoading.value = false
+  }
+}
+
+function removeAiRecRow(i) {
+  aiRecItems.value.splice(i, 1)
+}
+
+function addAiRecRow() {
+  const vars = {}
+  for (const v of selectedVariables.value) vars[v] = ''
+  aiRecItems.value.push({ phone: '', name: '', variables: vars, phone_valid: false, phone_normalized: '', contact_exists: false, contact_name: '' })
+}
+
+async function applyAiRecipients() {
+  const rows = aiRecItems.value.filter((r) => r.phone.trim())
+  if (!rows.length) {
+    toast.warning('Tidak ada baris penerima untuk disimpan.')
+    return
+  }
+  if (!campaign.value) return
+  aiRecApplying.value = true
+  try {
+    const data = await campaignsApi.aiApplyRecipients(
+      campaign.value.id,
+      rows.map((r) => ({ phone: r.phone.trim(), name: r.name.trim(), variables: r.variables || {} })),
+    )
+    aiRecDone.value = data
+    aiRecItems.value = []
+    const parts = [`${data.added} penerima ditambahkan`]
+    if (data.created_contacts) parts.push(`${data.created_contacts} kontak baru`)
+    if (data.matched_contacts) parts.push(`${data.matched_contacts} kontak dikenali`)
+    if (data.skipped?.length) parts.push(`${data.skipped.length} dilewati`)
+    toast.success(parts.join(', ') + '.')
+  } catch (e) {
+    toast.error('Gagal menyimpan penerima.')
+  } finally {
+    aiRecApplying.value = false
   }
 }
 
@@ -624,47 +708,140 @@ onMounted(async () => {
     <!-- ================= LANGKAH 3: INPUT AI ================= -->
     <section v-if="step === 3" class="card card-pad form-grid">
       <div>
-        <h2 class="section-title">3. Input AI — ekstraksi variabel</h2>
-        <p class="card-label mt-1">
-          Tulis info campaign dengan bahasa bebas (mis. “Promo akhir tahun diskon 50% berlaku sampai 31 Desember, kode: HEMAT50”).
-          AI akan mengekstrak nilai untuk variabel template. Hasilnya bisa Anda edit di langkah berikutnya.
+        <h2 class="section-title">3. Input AI</h2>
+        <div class="seg-toggle mt-2" role="tablist">
+          <button :class="['seg-btn', { active: aiMode === 'recipients' }]" @click="aiMode = 'recipients'">
+            <Icon name="users" :size="14" /> Daftar penerima
+          </button>
+          <button :class="['seg-btn', { active: aiMode === 'general' }]" @click="aiMode = 'general'">
+            <Icon name="zap" :size="14" /> Nilai umum
+          </button>
+        </div>
+      </div>
+
+      <!-- ===== Mode: daftar penerima (nilai beda per orang) ===== -->
+      <template v-if="aiMode === 'recipients'">
+        <p class="card-label -mt-2">
+          Tempel daftar penerima (satu entri per baris/blok: nama, nomor HP, dan data tiap pos).
+          AI akan memecahnya per penerima beserta nilai variabelnya. Periksa dan edit hasilnya
+          sebelum disimpan. Satu nomor boleh muncul berkali-kali, tiap baris jadi satu pesan.
         </p>
-      </div>
 
-      <div>
-        <label class="field-label">Teks bebas</label>
-        <textarea v-model="aiText" rows="6" class="field-input" placeholder="Contoh: Promo cuci gudang! Diskon 70% semua fashion, hanya tanggal 12-12. Gratis ongkir min. belanja 100rb."></textarea>
-      </div>
+        <div>
+          <label class="field-label">Daftar penerima (teks bebas)</label>
+          <textarea v-model="aiRecText" rows="7" class="field-input mono" placeholder="Contoh:&#10;1. POS Buol&#10;Ruben&#10;+62 877-2896-3152&#10;Jl. MA Turungku Kel. Kali Kec. Biau Kab. Buol&#10;&#10;2. POS Donggala&#10;Rivan&#10;+62 877-2896-3152&#10;Jl. Trans Sulawesi Palu - Sabang"></textarea>
+        </div>
 
-      <div>
-        <button @click="runAiExtract" :disabled="aiLoading" class="btn btn-secondary">
-          <Icon name="zap" :size="15" /> {{ aiLoading ? 'Menganalisis…' : 'Ekstrak dengan AI' }}
-        </button>
-      </div>
+        <div>
+          <button @click="runAiParseRecipients" :disabled="aiRecLoading" class="btn btn-secondary">
+            <Icon name="users" :size="15" /> {{ aiRecLoading ? 'Menganalisis…' : 'Proses dengan AI' }}
+          </button>
+        </div>
 
-      <div v-if="aiNote" class="alert-warning">
-        <Icon name="alert" :size="15" class="mt-0.5 shrink-0" />
-        <span>{{ aiNote }}</span>
-      </div>
+        <div v-if="aiRecNote" class="alert-warning">
+          <Icon name="alert" :size="15" class="mt-0.5 shrink-0" /> <span>{{ aiRecNote }}</span>
+        </div>
 
-      <div v-if="aiResult && Object.keys(aiResult).length" class="tbl-wrap">
-        <div class="tbl-title">Hasil ekstraksi AI</div>
-        <table class="tbl">
-          <tbody>
-            <tr v-for="(val, key) in aiResult" :key="key">
-              <td class="mono w-40" style="color: var(--accent-ink); font-weight: 600">{{ wrapVar(key) }}</td>
-              <td>{{ val || '–' }}</td>
-            </tr>
-          </tbody>
-        </table>
-        <div class="tbl-foot">Nilai ini menjadi prefill di langkah Mapping dan masih bisa diubah.</div>
-      </div>
+        <div v-if="aiRecItems.length" class="tbl-wrap">
+          <div class="tbl-title">Hasil parse AI: periksa dan edit sebelum disimpan ({{ aiRecItems.length }} penerima)</div>
+          <div class="tbl-scroll thin-scroll">
+            <table class="tbl min-w-[720px]">
+              <thead>
+                <tr>
+                  <th class="w-10">No</th>
+                  <th>Nama</th>
+                  <th>Nomor HP</th>
+                  <th v-for="vn in selectedVariables" :key="vn" class="mono">{{ wrapVar(vn) }}</th>
+                  <th class="w-12"><span class="sr-only">Hapus</span></th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="(row, i) in aiRecItems" :key="i" :class="{ 'row-invalid': !row.phone_valid }">
+                  <td class="num">{{ i + 1 }}</td>
+                  <td><input v-model="row.name" class="field-input field-sm" placeholder="Nama" /></td>
+                  <td>
+                    <input v-model="row.phone" class="field-input field-sm mono" placeholder="+62812…" />
+                    <div v-if="!row.phone_valid && row.phone" class="field-err">Nomor tidak valid</div>
+                    <div v-else-if="row.contact_exists" class="field-hint-ok">Kontak dikenali{{ row.contact_name ? ': ' + row.contact_name : '' }}</div>
+                  </td>
+                  <td v-for="vn in selectedVariables" :key="vn">
+                    <input v-model="row.variables[vn]" class="field-input field-sm" :placeholder="wrapVar(vn)" />
+                  </td>
+                  <td class="num">
+                    <button @click="removeAiRecRow(i)" class="icon-btn is-danger" title="Hapus baris">
+                      <Icon name="trash" :size="15" />
+                    </button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="tbl-foot">Baris tanpa nomor valid tidak ikut disimpan. Kontak baru otomatis dibuat; kontak lama dikenali dari nomornya.</div>
+        </div>
 
-      <div>
-        <button @click="step = 4; initMappings()" class="btn-tertiary text-sm">
-          Lewati, isi manual di langkah Mapping <Icon name="chevron-right" :size="14" />
-        </button>
-      </div>
+        <div v-if="aiRecItems.length" class="flex flex-wrap gap-2">
+          <button @click="addAiRecRow" class="btn btn-tertiary text-sm">
+            <Icon name="plus" :size="14" /> Tambah baris manual
+          </button>
+          <button @click="applyAiRecipients" :disabled="aiRecApplying" class="btn btn-accent">
+            <Icon name="check" :size="15" /> {{ aiRecApplying ? 'Menyimpan…' : `Simpan sebagai penerima (${aiRecItems.filter(r => r.phone.trim()).length})` }}
+          </button>
+        </div>
+
+        <div v-if="aiRecDone" class="alert-success">
+          <Icon name="check-double" :size="15" class="mt-0.5 shrink-0" />
+          <span>
+            {{ aiRecDone.added }} penerima ditambahkan
+            ({{ aiRecDone.created_contacts }} kontak baru, {{ aiRecDone.matched_contacts }} kontak dikenali).
+            <template v-if="aiRecDone.skipped?.length">Dilewati: {{ aiRecDone.skipped.join('; ') }}.</template>
+            Cek hasil render tiap penerima di langkah Review.
+          </span>
+        </div>
+      </template>
+
+      <!-- ===== Mode: nilai umum (sama untuk semua penerima) ===== -->
+      <template v-else>
+        <p class="card-label -mt-2">
+          Tulis info campaign dengan bahasa bebas (mis. “Promo akhir tahun diskon 50% berlaku sampai 31 Desember, kode: HEMAT50”).
+          AI akan mengekstrak SATU nilai per variabel yang berlaku sama untuk semua penerima.
+          Hasilnya bisa Anda edit di langkah berikutnya.
+        </p>
+
+        <div>
+          <label class="field-label">Teks bebas</label>
+          <textarea v-model="aiText" rows="6" class="field-input" placeholder="Contoh: Promo cuci gudang! Diskon 70% semua fashion, hanya tanggal 12-12. Gratis ongkir min. belanja 100rb."></textarea>
+        </div>
+
+        <div>
+          <button @click="runAiExtract" :disabled="aiLoading" class="btn btn-secondary">
+            <Icon name="zap" :size="15" /> {{ aiLoading ? 'Menganalisis…' : 'Ekstrak dengan AI' }}
+          </button>
+        </div>
+
+        <div v-if="aiNote" class="alert-warning">
+          <Icon name="alert" :size="15" class="mt-0.5 shrink-0" />
+          <span>{{ aiNote }}</span>
+        </div>
+
+        <div v-if="aiResult && Object.keys(aiResult).length" class="tbl-wrap">
+          <div class="tbl-title">Hasil ekstraksi AI</div>
+          <table class="tbl">
+            <tbody>
+              <tr v-for="(val, key) in aiResult" :key="key">
+                <td class="mono w-40" style="color: var(--accent-ink); font-weight: 600">{{ wrapVar(key) }}</td>
+                <td>{{ val || '–' }}</td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="tbl-foot">Nilai ini menjadi prefill di langkah Mapping dan masih bisa diubah.</div>
+        </div>
+
+        <div>
+          <button @click="step = 4; initMappings()" class="btn-tertiary text-sm">
+            Lewati, isi manual di langkah Mapping <Icon name="chevron-right" :size="14" />
+          </button>
+        </div>
+      </template>
     </section>
 
     <!-- ================= LANGKAH 4: MAPPING ================= -->

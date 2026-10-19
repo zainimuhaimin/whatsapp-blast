@@ -40,6 +40,31 @@ _SYSTEM_PROMPT_NOVARS = (
     "4. Jangan mengekstrak data personal penerima (nama penerima dsb) — hanya variabel yang diminta."
 )
 
+_SYSTEM_PROMPT_RECIPIENTS = (
+    "Kamu adalah ekstraktor data untuk tool pengiriman pesan WhatsApp. "
+    "User memiliki TEMPLATE pesan berikut (variabel ditulis {{{{nama_variabel}}}}):\n"
+    "---\n{template_body}\n---\n"
+    "Tugasmu: dari teks bebas user, kenali SETIAP PENERIMA/ENTRI yang disebutkan "
+    "(biasanya berupa daftar bernomor, bullet, atau blok terpisah — tiap entri "
+    "umumnya berisi nama orang, nomor telepon/HP, dan data pendukung). "
+    "Untuk SETIAP entri, ekstrak:\n"
+    "- \"phone\": nomor telepon/HP persis seperti tertulis (jangan ubah format)\n"
+    "- \"name\": nama orang pada entri itu\n"
+    "- \"variables\": objek berisi nilai untuk DAFTAR VARIABEL berikut: {variables}. "
+    "Gunakan TEMPLATE di atas sebagai konteks untuk memahami maksud tiap variabel.\n"
+    "Aturan:\n"
+    "1. Kembalikan JSON MURNI berupa ARRAY: "
+    "[{{\"phone\": \"...\", \"name\": \"...\", \"variables\": {{\"var1\": \"nilai\"}}}}], "
+    "tanpa teks lain, tanpa markdown.\n"
+    "2. SATU entri = SATU objek, walau nomor teleponnya sama dengan entri lain. "
+    "Jangan menggabungkan entri yang berbeda.\n"
+    "3. Jika suatu nilai tidak ditemukan di teks, isi string kosong \"\".\n"
+    "4. JANGAN mengarang nilai yang tidak ada di teks user.\n"
+    "5. Jika teks hanya berisi nilai umum tanpa daftar penerima (mis. info promo "
+    "yang berlaku untuk semua), kembalikan array dengan SATU objek ber-phone "
+    "dan name kosong."
+)
+
 # Batas panjang template yang dikirim sebagai konteks (hemat token)
 _MAX_TEMPLATE_CONTEXT_CHARS = 2000
 
@@ -71,6 +96,63 @@ def _build_system_prompt(variables: list[str], template_body: str | None) -> str
             template_body=body, variables=", ".join(variables)
         )
     return _SYSTEM_PROMPT_NOVARS.format(variables=", ".join(variables))
+
+
+def extract_recipients(
+    input_text: str, variables: list[str], template_body: str | None = None,
+    db=None,
+) -> tuple[list[dict], bool]:
+    """
+    Ekstrak DAFTAR PENERIMA dari teks bebas user: tiap entri berisi
+    phone, name, dan nilai variabel khusus entri itu.
+    Return: ([{"phone": str, "name": str, "variables": {var: value}}], ai_available).
+    """
+    api_key, model_name = _resolve_credentials(db)
+    if not api_key:
+        log.info("GEMINI_API_KEY kosong (ENV & Pengaturan) -> ai-parse fallback tanpa AI")
+        return [], False
+    try:
+        import google.generativeai as genai
+    except ImportError:
+        log.warning("package google-generativeai tidak terinstall -> fallback tanpa AI")
+        return [], False
+
+    body = (template_body or "").strip()
+    if len(body) > _MAX_TEMPLATE_CONTEXT_CHARS:
+        body = body[:_MAX_TEMPLATE_CONTEXT_CHARS] + "…"
+    try:
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel(
+            model_name=model_name,
+            system_instruction=_SYSTEM_PROMPT_RECIPIENTS.format(
+                template_body=body or "(template tanpa body)",
+                variables=", ".join(variables),
+            ),
+        )
+        response = model.generate_content(input_text)
+        text = (response.text or "").strip()
+        text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text).strip()
+        data = json.loads(text)
+        if isinstance(data, dict):  # toleransi: LLM mengembalikan objek tunggal
+            data = [data]
+        items: list[dict] = []
+        if isinstance(data, list):
+            for entry in data:
+                if not isinstance(entry, dict):
+                    continue
+                raw_vars = entry.get("variables") or {}
+                items.append({
+                    "phone": str(entry.get("phone") or "").strip(),
+                    "name": str(entry.get("name") or "").strip(),
+                    "variables": {
+                        var: str(raw_vars.get(var, "") or "")
+                        for var in variables
+                    } if isinstance(raw_vars, dict) else {v: "" for v in variables},
+                })
+        return items, True
+    except Exception as exc:
+        log.warning("Gemini extract-recipients gagal (%s) -> fallback kosong", exc)
+        return [], False
 
 
 def extract_variable_values(

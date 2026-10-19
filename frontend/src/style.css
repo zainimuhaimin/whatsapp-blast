@@ -339,7 +339,75 @@ select.field-input { width: auto; }
 .alert-warning  { background: var(--pill-warning-bg);  border-color: #fde68a; color: var(--pill-warning-ink); }
 .alert-info     { background: var(--pill-info-bg);     border-color: #c9dcf5; color: var(--pill-info-ink); }
 .alert-positive { background: var(--pill-positive-bg); border-color: #b7e8c9; color: var(--pill-positive-ink); }
+.alert-success  { background: var(--pill-positive-bg); border-color: #b7e8c9; color: var(--pill-positive-ink); }
 .alert-title { font-weight: 600; font-size: 14px; }
+
+/* ============================ Segmented toggle ============================ */
+.seg-toggle {
+  display: inline-flex;
+  background: var(--control);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-pill);
+  padding: 3px;
+  gap: 2px;
+}
+.seg-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 7px 14px;
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+}
+.seg-btn.active {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+
+/* ============================ Field kecil di tabel ============================ */
+.field-sm {
+  padding: 7px 10px;
+  font-size: 13px;
+  min-height: 0;
+}
+.field-hint-ok {
+  font-size: 12px;
+  color: var(--accent-ink);
+  margin-top: 4px;
+}
+.row-invalid td {
+  background: var(--pill-warning-bg);
+}
+.sr-only {
+  position: absolute;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.icon-btn:hover { background: var(--raised); color: var(--text); }
+.icon-btn.is-danger { color: var(--pill-negative-ink); }
+.icon-btn.is-danger:hover { background: var(--pill-negative-bg); }
 
 /* ============================ Tautan & teks bantu ============================ */
 .row-link {

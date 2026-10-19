@@ -213,13 +213,44 @@ class CampaignRecipient(Base):
 
     campaign: Mapped["Campaign"] = relationship(back_populates="recipients")
     contact: Mapped["Contact | None"] = relationship()
+    variable_overrides: Mapped[list["CampaignRecipientVariable"]] = relationship(
+        back_populates="recipient", cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
 
     __table_args__ = (
-        UniqueConstraint("campaign_id", "phone"),
+        # Satu nomor BOLEH muncul berkali-kali dalam satu campaign
+        # (mis. satu PIC menerima 2 pesan berbeda untuk 2 pos).
+        # Dedup nomor identik tetap dianjurkan di UI, tapi tidak dipaksa DB.
+        Index("idx_recipients_campaign_phone", "campaign_id", "phone"),
         Index("idx_recipients_campaign_status", "campaign_id", "status"),
         Index("idx_recipients_provider_msg", "provider_message_id"),
         Index("idx_recipients_retry", "next_retry_at",
               postgresql_where=text("status = 'failed'")),
+    )
+
+
+class CampaignRecipientVariable(Base):
+    """
+    Override nilai variabel PER PENERIMA (hasil ekstraksi AI per baris,
+    atau edit manual). Mengalahkan mapping level campaign & field kontak
+    saat render pesan (lihat campaign_service.resolve_values).
+    """
+    __tablename__ = "campaign_recipient_variables"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    recipient_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("campaign_recipients.id", ondelete="CASCADE"), nullable=False
+    )
+    variable_name: Mapped[str] = mapped_column(String(64), nullable=False)
+    value: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    recipient: Mapped["CampaignRecipient"] = relationship(
+        back_populates="variable_overrides")
+
+    __table_args__ = (
+        UniqueConstraint("recipient_id", "variable_name"),
+        Index("idx_crv_recipient", "recipient_id"),
     )
 
 

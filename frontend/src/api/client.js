@@ -124,6 +124,11 @@ export const campaignsApi = {
   aiExtract: (id, input_text) =>
     http.post(`/campaigns/${id}/ai-extract`, { input_text }).then((r) => r.data),
 
+  aiParseRecipients: (id, input_text) =>
+    http.post(`/campaigns/${id}/ai-parse-recipients`, { input_text }).then((r) => r.data),
+  aiApplyRecipients: (id, items) =>
+    http.post(`/campaigns/${id}/ai-apply-recipients`, { items }).then((r) => r.data),
+
   mappings: (id) => http.get(`/campaigns/${id}/mappings`).then((r) => r.data),
   saveMappings: (id, mappings) =>
     http.put(`/campaigns/${id}/mappings`, { mappings }).then((r) => r.data),

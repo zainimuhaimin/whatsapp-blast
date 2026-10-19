@@ -65,6 +65,43 @@ class AIExtractResponse(BaseModel):
     ai_available: bool
 
 
+class AIRecipientItem(BaseModel):
+    """Satu baris penerima hasil parse AI (atau edit manual user)."""
+    phone: str = Field(min_length=1, max_length=32)
+    name: str = Field(default="", max_length=128)
+    variables: dict[str, str] = Field(default_factory=dict)
+
+
+class AIParseRecipientsRequest(BaseModel):
+    input_text: str = Field(min_length=1)
+
+
+class AIParsedRecipient(BaseModel):
+    phone: str
+    phone_normalized: str = ""
+    phone_valid: bool = False
+    name: str = ""
+    variables: dict[str, str] = Field(default_factory=dict)
+    contact_exists: bool = False
+    contact_name: str | None = None
+
+
+class AIParseRecipientsResponse(BaseModel):
+    items: list[AIParsedRecipient]
+    ai_available: bool
+
+
+class AIApplyRecipientsRequest(BaseModel):
+    items: list[AIRecipientItem] = Field(min_length=1)
+
+
+class AIApplyRecipientsResponse(BaseModel):
+    added: int
+    created_contacts: int
+    matched_contacts: int
+    skipped: list[str] = Field(default_factory=list)
+
+
 class MappingItem(BaseModel):
     variable_name: str = Field(min_length=1, max_length=64)
     source: str = Field(description="contact|campaign")

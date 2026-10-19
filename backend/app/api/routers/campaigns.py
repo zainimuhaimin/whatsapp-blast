@@ -11,9 +11,11 @@ from sqlalchemy.orm import Session
 
 from app.core.db import get_db
 from app.core.deps import get_current_user
+from app.core.phone import normalize_phone
 from app.models import (
     Campaign,
     CampaignRecipient,
+    CampaignRecipientVariable,
     CampaignVariableMapping,
     Contact,
     TemplateVersion,
@@ -21,8 +23,13 @@ from app.models import (
     User,
 )
 from app.schemas import (
+    AIApplyRecipientsRequest,
+    AIApplyRecipientsResponse,
     AIExtractRequest,
     AIExtractResponse,
+    AIParseRecipientsRequest,
+    AIParseRecipientsResponse,
+    AIParsedRecipient,
     CampaignCreate,
     CampaignOut,
     CampaignUpdate,
@@ -248,6 +255,103 @@ def ai_extract(campaign_id: UUID, payload: AIExtractRequest, request: Request,
                 metadata={"ai_available": ai_available, "values": saved},
                 ip_address=_ip(request))
     return AIExtractResponse(values=saved, ai_available=ai_available)
+
+
+@router.post("/{campaign_id}/ai-parse-recipients", response_model=AIParseRecipientsResponse)
+def ai_parse_recipients(campaign_id: UUID, payload: AIParseRecipientsRequest,
+                        request: Request, db: Session = Depends(get_db),
+                        user: User = Depends(get_current_user)):
+    """
+    Parse teks bebas user -> daftar KANDIDAT penerima (TANPA menyimpan).
+    Tiap kandidat: nomor (mentah & ternormalisasi), nama, dan nilai variabel
+    khusus baris itu. User memeriksa/mengedit di UI sebelum apply.
+    """
+    campaign = _get_campaign_or_404(db, campaign_id)
+    _require_editable(campaign)
+    variables = campaign.template_version.variables
+    items, ai_available = gemini_service.extract_recipients(
+        payload.input_text, variables,
+        template_body=campaign.template_version.body,
+        db=db,
+    )
+    out: list[AIParsedRecipient] = []
+    for it in items:
+        raw_phone = str(it.get("phone") or "").strip()
+        try:
+            normalized = normalize_phone(raw_phone) if raw_phone else ""
+            valid = bool(normalized)
+        except ValueError:
+            normalized, valid = "", False
+        contact = (
+            db.query(Contact).filter(Contact.phone == normalized).first()
+            if valid else None
+        )
+        out.append(AIParsedRecipient(
+            phone=raw_phone,
+            phone_normalized=normalized,
+            phone_valid=valid,
+            name=str(it.get("name") or "").strip(),
+            variables={k: str(v or "") for k, v in (it.get("variables") or {}).items()},
+            contact_exists=contact is not None,
+            contact_name=contact.name if contact else None,
+        ))
+    return AIParseRecipientsResponse(items=out, ai_available=ai_available)
+
+
+@router.post("/{campaign_id}/ai-apply-recipients", response_model=AIApplyRecipientsResponse)
+def ai_apply_recipients(campaign_id: UUID, payload: AIApplyRecipientsRequest,
+                        request: Request, db: Session = Depends(get_db),
+                        user: User = Depends(get_current_user)):
+    """
+    Simpan daftar penerima (hasil parse AI yang sudah diperiksa/diedit user):
+    find-or-create kontak per nomor, tambah recipient, simpan override
+    variabel per penerima. Satu nomor BOLEH masuk berkali-kali — tiap baris
+    menjadi satu pesan terkirim.
+    """
+    campaign = _get_campaign_or_404(db, campaign_id)
+    _require_editable(campaign)
+    variables = set(campaign.template_version.variables or [])
+    added = created = matched = 0
+    skipped: list[str] = []
+    for item in payload.items:
+        try:
+            phone = normalize_phone(item.phone)
+        except ValueError:
+            skipped.append(f"{item.phone or '(kosong)'}: nomor tidak valid, dilewati")
+            continue
+        contact = db.query(Contact).filter(Contact.phone == phone).first()
+        if contact:
+            matched += 1
+            name = (item.name or "").strip()
+            if name and contact.name == contact.phone:
+                contact.name = name  # kontak auto-create -> perbarui namanya
+        else:
+            created += 1
+            contact = Contact(name=(item.name or "").strip() or phone, phone=phone)
+            db.add(contact)
+            db.flush()
+        if contact.is_blacklisted:
+            skipped.append(f"{phone}: kontak di-blacklist, dilewati")
+            continue
+        recipient = CampaignRecipient(
+            campaign_id=campaign.id, contact_id=contact.id, phone=phone)
+        db.add(recipient)
+        db.flush()
+        for var, val in (item.variables or {}).items():
+            if var in variables:
+                db.add(CampaignRecipientVariable(
+                    recipient_id=recipient.id, variable_name=var,
+                    value=str(val or "")))
+        added += 1
+    db.commit()
+    write_audit(db, "campaign.ai_apply_recipients", user_id=user.id,
+                entity_type="campaign", entity_id=str(campaign.id),
+                metadata={"added": added, "created_contacts": created,
+                          "matched_contacts": matched, "skipped": skipped},
+                ip_address=_ip(request))
+    return AIApplyRecipientsResponse(
+        added=added, created_contacts=created,
+        matched_contacts=matched, skipped=skipped)
 
 
 @router.get("/{campaign_id}/mappings", response_model=list[MappingOut])
