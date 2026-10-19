@@ -54,8 +54,8 @@ class UnofficialWhatsAppAdapter(WaProviderAdapter):
             # Sidecar belum terhubung (belum scan QR) -> raise agar worker
             # menandai failed + retry, bukan silent success.
             raise RuntimeError(
-                "Baileys belum terhubung — scan QR dulu di "
-                + settings.BAILEYS_API_URL.rstrip("/") + "/qr"
+                "Baileys belum terhubung — buka menu 'Koneksi WA' di aplikasi "
+                "lalu scan QR dengan nomor testing khusus"
             )
         resp.raise_for_status()
         data = resp.json()
