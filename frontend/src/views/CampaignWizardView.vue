@@ -198,10 +198,16 @@ async function applyAiRecipients() {
 const mappings = ref([]) // [{variable_name, source: 'contact'|'campaign', contact_field, value}]
 
 function smartDefault(varName) {
-  const v = varName.toLowerCase()
-  if (v.includes('name') || v.includes('nama')) return { source: 'contact', contact_field: 'name' }
-  if (v.includes('phone') || v.includes('telp') || v === 'hp' || v.includes('nomor')) return { source: 'contact', contact_field: 'phone' }
-  if (v.includes('tag')) return { source: 'contact', contact_field: 'tag' }
+  // Hanya map ke field kontak bila yakin: nama variabel persis menunjuk
+  // data orang. Selain itu default ke campaign (nilai manual/AI).
+  // (Dulu: v.includes('nama') ikut menangkap 'nama_pos' → mapping ngaco.)
+  const v = varName.toLowerCase().trim()
+  if (['nama', 'name', 'nama_lengkap', 'fullname', 'full_name'].includes(v))
+    return { source: 'contact', contact_field: 'name' }
+  if (['phone', 'telp', 'telepon', 'nomor', 'nomor_hp', 'no_hp', 'nohp', 'hp', 'whatsapp', 'wa'].includes(v))
+    return { source: 'contact', contact_field: 'phone' }
+  if (v === 'tag' || v.includes('tag'))
+    return { source: 'contact', contact_field: 'tag' }
   return { source: 'campaign', contact_field: null }
 }
 
