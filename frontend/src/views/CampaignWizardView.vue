@@ -89,7 +89,7 @@ const selectedVariables = computed(() =>
 )
 
 /* --------------------------- Langkah 3: AI ------------------------------ */
-const aiMode = ref('recipients') // 'recipients' | 'general'
+const aiMode = ref('recipients') // 'recipients' | 'file'
 
 // --- Ubah pesan: fleksibel seperti Blast dari File ---
 // Pesan tidak harus terpaku template — teksnya bisa diedit di sini,
@@ -187,6 +187,16 @@ function insertFreeVar(v) {
     el.focus()
     el.selectionStart = el.selectionEnd = start + tag.length
   })
+}
+
+function insertAiVar(v) {
+  const tag = wrapVar(v)
+  const el = aiRecTextRef.value
+  if (!el) { aiRecText.value += tag; return }
+  const start = el.selectionStart ?? aiRecText.value.length
+  const end = el.selectionEnd ?? start
+  aiRecText.value = aiRecText.value.slice(0, start) + tag + aiRecText.value.slice(end)
+  nextTick(() => { el.focus(); el.selectionStart = el.selectionEnd = start + tag.length })
 }
 
 async function createFreeTemplate() {
@@ -361,6 +371,7 @@ async function runAiExtract() {
 
 // --- Mode baru: daftar penerima (nilai berbeda per penerima) ---
 const aiRecText = ref('')
+const aiRecTextRef = ref(null)
 const aiRecLoading = ref(false)
 const aiRecApplying = ref(false)
 const aiRecItems = ref([]) // [{phone, name, variables:{}, phone_valid, phone_normalized, contact_exists, contact_name}]
@@ -1157,9 +1168,6 @@ onMounted(async () => {
                     <button :class="['seg-btn', { active: aiMode === 'recipients' }]" @click="aiMode = 'recipients'">
                       <Icon name="users" :size="14" /> AI — Daftar penerima
                     </button>
-                    <button :class="['seg-btn', { active: aiMode === 'general' }]" @click="aiMode = 'general'">
-                      <Icon name="zap" :size="14" /> AI — Nilai umum
-                    </button>
                     <button :class="['seg-btn', { active: aiMode === 'file' }]" @click="aiMode = 'file'">
                       <Icon name="upload" :size="14" /> Upload file
                     </button>
@@ -1177,7 +1185,14 @@ onMounted(async () => {
 
               <div>
                 <label class="field-label">Daftar penerima (teks bebas)</label>
-                <textarea v-model="aiRecText" rows="7" class="field-input mono" placeholder="Contoh:&#10;1. POS Buol&#10;Ruben&#10;+62 877-2896-3152&#10;Jl. MA Turungku Kel. Kali Kec. Biau Kab. Buol&#10;&#10;2. POS Donggala&#10;Rivan&#10;+62 877-2896-3152&#10;Jl. Trans Sulawesi Palu - Sabang"></textarea>
+                <div class="chip-row mb-2">
+                  <span class="card-label">Sisipkan variabel sebagai panduan AI:</span>
+                  <button v-for="v in msgEditChips" :key="v" @click="insertAiVar(v)" class="chip-var chip-click mono" type="button">
+                    {{ wrapVar(v) }}
+                  </button>
+                  <span v-if="!msgEditChips.length" class="card-label">Belum ada — upload file dulu atau pilih template.</span>
+                </div>
+                <textarea ref="aiRecTextRef" v-model="aiRecText" rows="7" class="field-input mono" placeholder="Contoh:&#10;1. POS Buol&#10;Ruben&#10;+62 877-2896-3152&#10;Jl. MA Turungku Kel. Kali Kec. Biau Kab. Buol&#10;&#10;2. POS Donggala&#10;Rivan&#10;+62 877-2896-3152&#10;Jl. Trans Sulawesi Palu - Sabang"></textarea>
               </div>
 
               <div>
@@ -1247,49 +1262,6 @@ onMounted(async () => {
               </div>
             </template>
 
-            <!-- ===== Mode: nilai umum (sama untuk semua penerima) ===== -->
-            <template v-else>
-              <p class="card-label -mt-2">
-                Tulis info campaign dengan bahasa bebas (mis. “Promo akhir tahun diskon 50% berlaku sampai 31 Desember, kode: HEMAT50”).
-                AI akan mengekstrak SATU nilai per variabel yang berlaku sama untuk semua penerima.
-                Hasilnya bisa Anda edit di langkah berikutnya.
-              </p>
-
-              <div>
-                <label class="field-label">Teks bebas</label>
-                <textarea v-model="aiText" rows="6" class="field-input" placeholder="Contoh: Promo cuci gudang! Diskon 70% semua fashion, hanya tanggal 12-12. Gratis ongkir min. belanja 100rb."></textarea>
-              </div>
-
-              <div>
-                <button @click="runAiExtract" :disabled="aiLoading" class="btn btn-secondary">
-                  <Icon name="zap" :size="15" /> {{ aiLoading ? 'Menganalisis…' : 'Ekstrak dengan AI' }}
-                </button>
-              </div>
-
-              <div v-if="aiNote" class="alert-warning">
-                <Icon name="alert" :size="15" class="mt-0.5 shrink-0" />
-                <span>{{ aiNote }}</span>
-              </div>
-
-              <div v-if="aiResult && Object.keys(aiResult).length" class="tbl-wrap">
-                <div class="tbl-title">Hasil ekstraksi AI</div>
-                <table class="tbl">
-                  <tbody>
-                    <tr v-for="(val, key) in aiResult" :key="key">
-                      <td class="mono w-40" style="color: var(--accent-ink); font-weight: 600">{{ wrapVar(key) }}</td>
-                      <td>{{ val || '–' }}</td>
-                    </tr>
-                  </tbody>
-                </table>
-                <div class="tbl-foot">Nilai ini menjadi prefill di langkah Mapping dan masih bisa diubah.</div>
-              </div>
-
-              <div>
-                <button @click="step = 4; initMappings()" class="btn-tertiary text-sm">
-                  Lewati, isi manual di langkah Mapping <Icon name="chevron-right" :size="14" />
-                </button>
-              </div>
-            </template>
 
             <!-- ===== Mode: upload file (tiap baris = penerima) ===== -->
             <template v-if="aiMode === 'file'">
@@ -1332,7 +1304,7 @@ onMounted(async () => {
                   <select id="wf-phone-col" v-model="filePhoneVar" class="field-input mt-1">
                     <option value="" disabled>\u2014 pilih kolom \u2014</option>
                     <option v-for="c in fileColumns" :key="c.variable" :value="c.variable">
-                      {{ c.header }} \u2192 {{ wrapVar(c.variable) }}
+                      {{ c.header }} → {{ wrapVar(c.variable) }}
                     </option>
                   </select>
                 </div>
