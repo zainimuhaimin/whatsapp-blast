@@ -37,6 +37,9 @@ from app.schemas import (
     MappingsUpdate,
     PageMeta,
     RecipientOut,
+    RecipientVariableItem,
+    RecipientVariablesUpdate,
+    RecipientVariablesResponse,
     RecipientsBuildRequest,
     RecipientsBuildResponse,
     ReviewOut,
@@ -311,6 +314,16 @@ def ai_apply_recipients(campaign_id: UUID, payload: AIApplyRecipientsRequest,
     campaign = _get_campaign_or_404(db, campaign_id)
     _require_editable(campaign)
     variables = set(campaign.template_version.variables or [])
+
+    def _sig(phone_: str, vars_: dict) -> tuple:
+        return (phone_, tuple(sorted((k, str(v or "")) for k, v in vars_.items())))
+
+    existing_sigs = set()
+    for r in db.query(CampaignRecipient).filter(
+            CampaignRecipient.campaign_id == campaign.id).all():
+        ov = {rv.variable_name: (rv.value or "") for rv in (r.variable_overrides or [])}
+        existing_sigs.add(_sig(r.phone, ov))
+
     added = created = matched = 0
     skipped: list[str] = []
     for item in payload.items:
@@ -318,6 +331,11 @@ def ai_apply_recipients(campaign_id: UUID, payload: AIApplyRecipientsRequest,
             phone = normalize_phone(item.phone)
         except ValueError:
             skipped.append(f"{item.phone or '(kosong)'}: nomor tidak valid, dilewati")
+            continue
+        item_vars = {k: str(v or "") for k, v in (item.variables or {}).items()
+                     if k in variables}
+        if _sig(phone, item_vars) in existing_sigs:
+            skipped.append(f"{phone}: baris identik sudah ada, dilewati")
             continue
         contact = db.query(Contact).filter(Contact.phone == phone).first()
         if contact:
@@ -337,11 +355,10 @@ def ai_apply_recipients(campaign_id: UUID, payload: AIApplyRecipientsRequest,
             campaign_id=campaign.id, contact_id=contact.id, phone=phone)
         db.add(recipient)
         db.flush()
-        for var, val in (item.variables or {}).items():
-            if var in variables:
-                db.add(CampaignRecipientVariable(
-                    recipient_id=recipient.id, variable_name=var,
-                    value=str(val or "")))
+        for var, val in item_vars.items():
+            db.add(CampaignRecipientVariable(
+                recipient_id=recipient.id, variable_name=var, value=val))
+        existing_sigs.add(_sig(phone, item_vars))
         added += 1
     db.commit()
     write_audit(db, "campaign.ai_apply_recipients", user_id=user.id,
@@ -352,6 +369,110 @@ def ai_apply_recipients(campaign_id: UUID, payload: AIApplyRecipientsRequest,
     return AIApplyRecipientsResponse(
         added=added, created_contacts=created,
         matched_contacts=matched, skipped=skipped)
+
+
+@router.get("/{campaign_id}/recipient-variables", response_model=RecipientVariablesResponse)
+def get_recipient_variables(campaign_id: UUID, db: Session = Depends(get_db),
+                            user: User = Depends(get_current_user)):
+    """
+    Ringkasan nilai variabel per penerima (hasil AI per baris / edit manual):
+    dipakai wizard langkah Mapping untuk menampilkan variabel yang sudah
+    terisi AI agar tidak perlu di-mapping manual lagi.
+    """
+    from app.schemas import RecipientVariableEntry, RecipientVariableSummary
+    campaign = _get_campaign_or_404(db, campaign_id)
+    recipients = (
+        db.query(CampaignRecipient)
+        .filter(CampaignRecipient.campaign_id == campaign.id)
+        .order_by(CampaignRecipient.created_at)
+        .all()
+    )
+    contact_names = {}
+    for r in recipients:
+        if r.contact_id and r.contact_id not in contact_names:
+            c = db.get(Contact, r.contact_id)
+            contact_names[r.contact_id] = c.name if c else ""
+    by_var: dict[str, list] = {}
+    for r in recipients:
+        for rv in (r.variable_overrides or []):
+            by_var.setdefault(rv.variable_name, []).append(
+                RecipientVariableEntry(
+                    recipient_id=str(r.id), phone=r.phone,
+                    name=contact_names.get(r.contact_id, ""),
+                    value=rv.value or "",
+                )
+            )
+    return RecipientVariablesResponse(
+        variables=[
+            RecipientVariableSummary(
+                variable_name=var, recipient_count=len(entries), entries=entries)
+            for var, entries in sorted(by_var.items())
+        ],
+        total_recipients=len(recipients),
+    )
+
+
+@router.put("/{campaign_id}/recipient-variables", response_model=RecipientVariablesResponse)
+def put_recipient_variables(campaign_id: UUID, payload: RecipientVariablesUpdate,
+                            request: Request, db: Session = Depends(get_db),
+                            user: User = Depends(get_current_user)):
+    """Simpan/ubah nilai variabel per penerima (edit manual dari wizard)."""
+    campaign = _get_campaign_or_404(db, campaign_id)
+    _require_editable(campaign)
+    allowed_vars = set(campaign.template_version.variables or [])
+    recipient_ids = {str(row[0]) for row in db.query(CampaignRecipient.id).filter(
+        CampaignRecipient.campaign_id == campaign.id).all()}
+    for item in payload.items:
+        if item.variable_name not in allowed_vars:
+            raise HTTPException(
+                status_code=422,
+                detail=f"variabel '{item.variable_name}' tidak ada di template")
+        if item.recipient_id not in recipient_ids:
+            raise HTTPException(
+                status_code=422, detail="recipient tidak termasuk campaign ini")
+    for item in payload.items:
+        existing = (
+            db.query(CampaignRecipientVariable)
+            .join(CampaignRecipient,
+                  CampaignRecipient.id == CampaignRecipientVariable.recipient_id)
+            .filter(CampaignRecipientVariable.recipient_id == item.recipient_id,
+                    CampaignRecipientVariable.variable_name == item.variable_name)
+            .first()
+        )
+        if existing:
+            existing.value = item.value
+        else:
+            db.add(CampaignRecipientVariable(
+                recipient_id=item.recipient_id,
+                variable_name=item.variable_name, value=item.value))
+    db.commit()
+    write_audit(db, "campaign.recipient_variables_update", user_id=user.id,
+                entity_type="campaign", entity_id=str(campaign.id),
+                metadata={"updated": len(payload.items)}, ip_address=_ip(request))
+    return get_recipient_variables(campaign_id, db, user)
+
+
+@router.delete("/{campaign_id}/recipient-variables/{variable_name}")
+def delete_recipient_variable(campaign_id: UUID, variable_name: str,
+                              request: Request, db: Session = Depends(get_db),
+                              user: User = Depends(get_current_user)):
+    """Hapus semua nilai per-penerima untuk satu variabel (kembali ke mapping manual)."""
+    campaign = _get_campaign_or_404(db, campaign_id)
+    _require_editable(campaign)
+    deleted = (
+        db.query(CampaignRecipientVariable)
+        .join(CampaignRecipient,
+              CampaignRecipient.id == CampaignRecipientVariable.recipient_id)
+        .filter(CampaignRecipient.campaign_id == campaign.id,
+                CampaignRecipientVariable.variable_name == variable_name)
+        .delete(synchronize_session=False)
+    )
+    db.commit()
+    write_audit(db, "campaign.recipient_variable_clear", user_id=user.id,
+                entity_type="campaign", entity_id=str(campaign.id),
+                metadata={"variable": variable_name, "deleted": deleted},
+                ip_address=_ip(request))
+    return {"ok": True, "deleted": deleted}
 
 
 @router.get("/{campaign_id}/mappings", response_model=list[MappingOut])

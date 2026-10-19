@@ -123,14 +123,20 @@ AI mengekstrak:
 
 ## 5. Mapping Variabel
 
-Di langkah ini Anda menentukan **sumber** tiap variabel — ada dua pilihan:
+Di langkah ini Anda menentukan **sumber** tiap variabel — ada tiga kemungkinan:
 
 | Sumber | Artinya | Contoh |
 |---|---|---|
+| **AI per penerima** | Sudah diisi AI di langkah 4 (mode Daftar penerima) — nilai beda per orang, **tidak perlu mapping manual** | `nama`, `nama_pos`, `alamat_pos` |
 | **Kontak** | Diambil dari data tiap penerima (berbeda-beda) | `nama` → field *Nama* kontak; bisa juga *Nomor HP* atau *Tag* |
-| **Campaign** | Satu nilai berlaku untuk semua penerima (hasil AI di langkah 4, bisa diedit) | `promo`, `kode` |
+| **Campaign** | Satu nilai berlaku untuk semua penerima (hasil AI mode Nilai umum, bisa diedit) | `promo`, `kode` |
 
-Atur mapping untuk semua variabel sampai tidak ada yang kosong. Pesan untuk tiap penerima kemudian **di-render otomatis**: `Halo {{nama}}!` menjadi `Halo Budi!`, `Halo Sari!`, dan seterusnya.
+Variabel berlabel **Terisi AI per penerima** tampil sebagai kartu info (bukan form) — Anda bisa
+mengintip nilainya, mengubah per baris lewat tombol **Lihat / ubah nilai**, atau menghapusnya
+(**Hapus, mapping manual**) bila ingin kembali mengatur manual. Validasi langkah ini otomatis
+melewati variabel yang sudah terisi AI.
+
+Urutan prioritas saat pesan di-render: **nilai per penerima** → nilai campaign → field kontak.
 
 ## 6. Review & Konfirmasi — Periksa Sebelum Blast
 

@@ -102,6 +102,34 @@ class AIApplyRecipientsResponse(BaseModel):
     skipped: list[str] = Field(default_factory=list)
 
 
+class RecipientVariableEntry(BaseModel):
+    recipient_id: str
+    phone: str
+    name: str
+    value: str
+
+
+class RecipientVariableSummary(BaseModel):
+    variable_name: str
+    recipient_count: int
+    entries: list[RecipientVariableEntry] = Field(default_factory=list)
+
+
+class RecipientVariablesResponse(BaseModel):
+    variables: list[RecipientVariableSummary] = Field(default_factory=list)
+    total_recipients: int = 0
+
+
+class RecipientVariableItem(BaseModel):
+    recipient_id: str = Field(min_length=1)
+    variable_name: str = Field(min_length=1, max_length=64)
+    value: str = Field(default="")
+
+
+class RecipientVariablesUpdate(BaseModel):
+    items: list[RecipientVariableItem] = Field(min_length=1)
+
+
 class MappingItem(BaseModel):
     variable_name: str = Field(min_length=1, max_length=64)
     source: str = Field(description="contact|campaign")

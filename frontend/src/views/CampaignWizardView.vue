@@ -211,6 +211,13 @@ async function initMappings() {
     const data = await campaignsApi.mappings(campaign.value.id)
     existing = Array.isArray(data) ? data : data.mappings || []
   } catch { /* biarkan default */ }
+  // Nilai per-penerima hasil AI: variabel yang sudah terisi tidak perlu mapping manual
+  try {
+    const rv = await campaignsApi.recipientVariables(campaign.value.id)
+    const map = {}
+    for (const v of rv.variables || []) map[v.variable_name] = v
+    recipientVars.value = map
+  } catch { recipientVars.value = {} }
   const byName = Object.fromEntries(existing.map((m) => [m.variable_name, m]))
   mappings.value = selectedVariables.value.map((varName) => {
     const prev = byName[varName]
@@ -232,9 +239,70 @@ async function initMappings() {
   })
 }
 
+/* Nilai per-penerima hasil AI (override): {variable_name: {recipient_count, entries}} */
+const recipientVars = ref({})
+const aiFilledCount = (varName) => recipientVars.value[varName]?.recipient_count || 0
+
+/* Edit inline nilai per-penerima */
+const rvEditVar = ref(null) // variable_name yang sedang diedit
+const rvEditRows = ref([])  // [{recipient_id, phone, name, value}]
+const rvSaving = ref(false)
+
+function startRvEdit(varName) {
+  const summary = recipientVars.value[varName]
+  if (!summary) return
+  rvEditVar.value = varName
+  rvEditRows.value = (summary.entries || []).map((e) => ({ ...e }))
+}
+
+function cancelRvEdit() {
+  rvEditVar.value = null
+  rvEditRows.value = []
+}
+
+async function saveRvEdit() {
+  if (!rvEditVar.value || !campaign.value) return
+  rvSaving.value = true
+  try {
+    const data = await campaignsApi.saveRecipientVariables(
+      campaign.value.id,
+      rvEditRows.value.map((r) => ({
+        recipient_id: r.recipient_id,
+        variable_name: rvEditVar.value,
+        value: r.value ?? '',
+      })),
+    )
+    const map = {}
+    for (const v of data.variables || []) map[v.variable_name] = v
+    recipientVars.value = map
+    toast.success(`Nilai ${wrapVar(rvEditVar.value)} per penerima disimpan.`)
+    cancelRvEdit()
+  } catch {
+    toast.error('Gagal menyimpan nilai per penerima.')
+  } finally {
+    rvSaving.value = false
+  }
+}
+
+async function clearRvVar(varName) {
+  if (!campaign.value) return
+  if (!confirm(`Hapus ${recipientVars.value[varName]?.recipient_count || 0} nilai AI untuk ${wrapVar(varName)}? Variabel kembali ke mapping manual.`)) return
+  try {
+    await campaignsApi.clearRecipientVariable(campaign.value.id, varName)
+    const next = { ...recipientVars.value }
+    delete next[varName]
+    recipientVars.value = next
+    toast.success(`Nilai AI untuk ${wrapVar(varName)} dihapus. Silakan mapping manual.`)
+  } catch {
+    toast.error('Gagal menghapus nilai AI.')
+  }
+}
+
 const mappingErrors = computed(() => {
   const errs = []
   for (const m of mappings.value) {
+    // Variabel yang sudah terisi AI per penerima tidak butuh mapping manual
+    if (aiFilledCount(m.variable_name) > 0) continue
     if (m.source === 'contact' && !['name', 'phone', 'tag'].includes(m.contact_field)) {
       errs.push(`Variabel {{${m.variable_name}}}: pilih field kontak (nama/nomor/tag).`)
     }
@@ -289,10 +357,18 @@ async function loadRecipientsData() {
       const { items } = await contactsApi.list({ limit: 1000 })
       allContacts.value = items || []
     }
+    // Penerima yang sudah ditambahkan (mis. via AI di langkah 3)
+    if (campaign.value) {
+      try {
+        const res = await campaignsApi.recipients(campaign.value.id, { limit: 1 })
+        existingRecipients.value = res.meta?.total ?? res.total ?? (res.items || []).length
+      } catch { existingRecipients.value = 0 }
+    }
   } finally {
     recipientsLoading.value = false
   }
 }
+const existingRecipients = ref(0)
 
 /* Tambah nomor cepat: otomatis tersimpan sebagai kontak (dedup by nomor) */
 const quickName = ref('')
@@ -409,7 +485,9 @@ function validateStep(n) {
     errs.push(...mappingErrors.value)
   }
   if (n === 5 && !form.value.is_test_mode) {
-    if (selectedContacts.value.size === 0) errs.push('Pilih minimal satu penerima.')
+    if (selectedContacts.value.size === 0 && existingRecipients.value === 0) {
+      errs.push('Pilih minimal satu penerima.')
+    }
   }
   if (n === 5 && form.value.is_test_mode) {
     if (!testNums.value.length) errs.push('Mode test aktif tetapi tidak ada nomor test yang aktif. Tambahkan di menu Nomor Test.')
@@ -449,17 +527,22 @@ async function next() {
     }
     if (step.value === 4) {
       await initMappingsIfNeeded()
-      await campaignsApi.saveMappings(campaign.value.id, mappings.value)
+      // Variabel yang sudah terisi AI per penerima tidak perlu mapping manual
+      const manual = mappings.value.filter((m) => aiFilledCount(m.variable_name) === 0)
+      await campaignsApi.saveMappings(campaign.value.id, manual)
       toast.success('Mapping variabel disimpan.')
     }
     if (step.value === 5) {
       const ids = form.value.is_test_mode ? [] : [...selectedContacts.value]
       const res = await campaignsApi.buildRecipients(campaign.value.id, ids)
       const built = res.built ?? res.count ?? res.total ?? ids.length
+      const existing = existingRecipients.value
       toast.success(
         form.value.is_test_mode
           ? `Penerima mode test dibangun (${testNums.value.length} nomor test).`
-          : `${built} penerima ditambahkan (blacklist & duplikat otomatis dilewati).`
+          : existing > 0 && built === 0
+            ? `${existing} penerima sudah ada dari langkah sebelumnya. Lanjut ke Review.`
+            : `${built} penerima ditambahkan (blacklist & duplikat otomatis dilewati).`
       )
     }
     if (step.value < 6) {
@@ -849,8 +932,9 @@ onMounted(async () => {
       <div>
         <h2 class="section-title">4. Mapping variabel</h2>
         <p class="card-label mt-1">
-          Tentukan sumber tiap variabel: <b>field kontak</b> (diambil dari data tiap penerima, bukan dari AI)
-          atau <b>nilai campaign</b> (sama untuk semua penerima, dari hasil AI dan bisa diedit).
+          Variabel yang <b>sudah diisi AI per penerima</b> di langkah 3 tidak perlu mapping manual.
+          Sisanya tentukan sumbernya: <b>field kontak</b> (beda per penerima, dari data kontak)
+          atau <b>nilai campaign</b> (sama untuk semua penerima).
         </p>
       </div>
 
@@ -858,35 +942,82 @@ onMounted(async () => {
 
       <div v-for="m in mappings" :key="m.variable_name" class="mapping-card">
         <div class="mono font-semibold" style="color: var(--accent-ink)">{{ wrapVar(m.variable_name) }}</div>
-        <div class="mapping-sources">
-          <label class="radio-row">
-            <input type="radio" v-model="m.source" value="contact" class="radio-accent" />
-            Field kontak
-          </label>
-          <label class="radio-row">
-            <input type="radio" v-model="m.source" value="campaign" class="radio-accent" />
-            Nilai campaign
-          </label>
-        </div>
-        <div v-if="m.source === 'contact'">
-          <label class="field-label">Field kontak</label>
-          <select v-model="m.contact_field" class="field-input w-auto">
-            <option value="name">Nama (name)</option>
-            <option value="phone">Nomor (phone)</option>
-            <option value="tag">Tag</option>
-          </select>
-        </div>
-        <div v-else>
-          <label class="field-label">Nilai (berlaku untuk semua penerima)</label>
-          <input v-model="m.value" class="field-input" :placeholder="`Nilai untuk {{${m.variable_name}}}`" />
-          <div v-if="aiResult?.[m.variable_name]" class="field-hint">Prefill dari AI: “{{ aiResult[m.variable_name] }}”. Silakan ubah bila perlu.</div>
-        </div>
+
+        <!-- Sudah terisi AI per penerima: tampil info, bukan form manual -->
+        <template v-if="aiFilledCount(m.variable_name) > 0">
+          <div class="ai-filled-row">
+            <span class="pill pill-accent"><Icon name="zap" :size="13" /> Terisi AI per penerima</span>
+            <span class="card-label">{{ aiFilledCount(m.variable_name) }} penerima punya nilai sendiri-sendiri</span>
+          </div>
+          <div v-if="rvEditVar !== m.variable_name && recipientVars[m.variable_name]" class="preview-chips">
+            <span v-for="(e, i) in recipientVars[m.variable_name].entries.slice(0, 3)" :key="i" class="chip" :title="`${e.name} (${e.phone})`">{{ e.value || '–' }}</span>
+            <span v-if="recipientVars[m.variable_name].entries.length > 3" class="card-label">+{{ recipientVars[m.variable_name].entries.length - 3 }} lagi</span>
+          </div>
+          <div class="flex flex-wrap gap-2 mt-2">
+            <button @click="rvEditVar === m.variable_name ? cancelRvEdit() : startRvEdit(m.variable_name)" class="btn btn-tertiary text-sm">
+              <Icon name="pencil" :size="14" /> {{ rvEditVar === m.variable_name ? 'Tutup' : 'Lihat / ubah nilai' }}
+            </button>
+            <button @click="clearRvVar(m.variable_name)" class="btn btn-tertiary text-sm">
+              <Icon name="trash" :size="14" /> Hapus, mapping manual
+            </button>
+          </div>
+          <div v-if="rvEditVar === m.variable_name" class="tbl-wrap mt-3">
+            <div class="tbl-scroll thin-scroll">
+              <table class="tbl">
+                <thead><tr><th>Penerima</th><th>Nomor</th><th>Nilai {{ wrapVar(m.variable_name) }}</th></tr></thead>
+                <tbody>
+                  <tr v-for="row in rvEditRows" :key="row.recipient_id">
+                    <td>{{ row.name || '–' }}</td>
+                    <td class="mono whitespace-nowrap">{{ row.phone }}</td>
+                    <td><input v-model="row.value" class="field-input field-sm" /></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="flex gap-2 mt-2">
+              <button @click="saveRvEdit" :disabled="rvSaving" class="btn btn-accent text-sm">{{ rvSaving ? 'Menyimpan…' : 'Simpan nilai' }}</button>
+              <button @click="cancelRvEdit" class="btn btn-tertiary text-sm">Batal</button>
+            </div>
+          </div>
+        </template>
+
+        <!-- Mapping manual -->
+        <template v-else>
+          <div class="mapping-sources">
+            <label class="radio-row">
+              <input type="radio" v-model="m.source" value="contact" class="radio-accent" />
+              Field kontak
+            </label>
+            <label class="radio-row">
+              <input type="radio" v-model="m.source" value="campaign" class="radio-accent" />
+              Nilai campaign
+            </label>
+          </div>
+          <div v-if="m.source === 'contact'">
+            <label class="field-label">Field kontak</label>
+            <select v-model="m.contact_field" class="field-input w-auto">
+              <option value="name">Nama (name)</option>
+              <option value="phone">Nomor (phone)</option>
+              <option value="tag">Tag</option>
+            </select>
+          </div>
+          <div v-else>
+            <label class="field-label">Nilai (berlaku untuk semua penerima)</label>
+            <input v-model="m.value" class="field-input" :placeholder="`Nilai untuk {{${m.variable_name}}}`" />
+            <div v-if="aiResult?.[m.variable_name]" class="field-hint">Prefill dari AI: “{{ aiResult[m.variable_name] }}”. Silakan ubah bila perlu.</div>
+          </div>
+        </template>
       </div>
     </section>
 
     <!-- ================= LANGKAH 5: PENERIMA ================= -->
     <section v-if="step === 5" class="card card-pad form-grid">
       <h2 class="section-title">5. Pilih penerima</h2>
+
+      <div v-if="!form.is_test_mode && existingRecipients > 0" class="alert-info">
+        <Icon name="info" :size="15" class="mt-0.5 shrink-0" />
+        <div><b>{{ existingRecipients }} penerima sudah ada</b> (dari AI di langkah 3). Anda bisa tambah lagi di bawah, atau langsung lanjut — yang sudah ada ikut terkirim.</div>
+      </div>
 
       <div v-if="form.is_test_mode">
         <div class="alert-warning mb-4">

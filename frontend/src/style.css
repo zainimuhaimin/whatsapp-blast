@@ -409,6 +409,35 @@ select.field-input { width: auto; }
 .icon-btn.is-danger { color: var(--pill-negative-ink); }
 .icon-btn.is-danger:hover { background: var(--pill-negative-bg); }
 
+/* Baris info "terisi AI per penerima" di mapping */
+.ai-filled-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+.preview-chips {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+.chip {
+  display: inline-block;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  background: var(--control);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-pill);
+  padding: 4px 10px;
+  color: var(--muted);
+}
+
 /* ============================ Tautan & teks bantu ============================ */
 .row-link {
   font-weight: 500;

@@ -129,6 +129,13 @@ export const campaignsApi = {
   aiApplyRecipients: (id, items) =>
     http.post(`/campaigns/${id}/ai-apply-recipients`, { items }).then((r) => r.data),
 
+  recipientVariables: (id) =>
+    http.get(`/campaigns/${id}/recipient-variables`).then((r) => r.data),
+  saveRecipientVariables: (id, items) =>
+    http.put(`/campaigns/${id}/recipient-variables`, { items }).then((r) => r.data),
+  clearRecipientVariable: (id, variableName) =>
+    http.delete(`/campaigns/${id}/recipient-variables/${encodeURIComponent(variableName)}`).then((r) => r.data),
+
   mappings: (id) => http.get(`/campaigns/${id}/mappings`).then((r) => r.data),
   saveMappings: (id, mappings) =>
     http.put(`/campaigns/${id}/mappings`, { mappings }).then((r) => r.data),
