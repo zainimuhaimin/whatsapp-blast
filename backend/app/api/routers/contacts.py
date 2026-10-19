@@ -14,6 +14,8 @@ from app.models import CampaignRecipient, Contact, User
 from app.schemas import (
     BlacklistToggle,
     ContactCreate,
+    ContactFindOrCreate,
+    ContactFindOrCreateResponse,
     ContactOut,
     ContactUpdate,
     PageMeta,
@@ -81,6 +83,42 @@ def create_contact(payload: ContactCreate, request: Request,
                 entity_id=str(contact.id),
                 metadata={"name": contact.name, "phone": contact.phone}, ip_address=_ip(request))
     return contact
+
+
+@router.post("/find-or-create", response_model=ContactFindOrCreateResponse)
+def find_or_create_contact(payload: ContactFindOrCreate, request: Request,
+                           db: Session = Depends(get_db),
+                           user: User = Depends(get_current_user)):
+    """
+    Cari kontak berdasar nomor telepon. Nomor otomatis dinormalisasi
+    (0812… == +62812… == 62812…), jadi nomor identik beda format tidak
+    akan dobel. Bila belum ada -> buat kontak baru otomatis.
+    Dipakai untuk input nomor cepat (mis. nomor PIC) di wizard campaign.
+    """
+    existing = db.query(Contact).filter(Contact.phone == payload.phone).first()
+    if existing:
+        name = (payload.name or "").strip()
+        if name and existing.name == existing.phone:
+            # kontak hasil auto-create (nama == nomor) -> perbarui namanya
+            existing.name = name
+            db.commit()
+            db.refresh(existing)
+            write_audit(db, "contact.quick_add_name", user_id=user.id,
+                        entity_type="contact", entity_id=str(existing.id),
+                        metadata={"name": name, "phone": existing.phone},
+                        ip_address=_ip(request))
+        return {"contact": existing, "created": False}
+    name = (payload.name or "").strip() or payload.phone
+    contact = Contact(name=name, phone=payload.phone,
+                      tag=payload.tag, notes=payload.notes)
+    db.add(contact)
+    db.commit()
+    db.refresh(contact)
+    write_audit(db, "contact.quick_add", user_id=user.id, entity_type="contact",
+                entity_id=str(contact.id),
+                metadata={"name": contact.name, "phone": contact.phone},
+                ip_address=_ip(request))
+    return {"contact": contact, "created": True}
 
 
 @router.get("/{contact_id}", response_model=ContactOut)

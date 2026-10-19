@@ -2,7 +2,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { contactsApi } from '../api/client'
 import { useToast } from '../stores/useToast'
-import { normalizePhone, formatDateTime } from '../utils/format'
+import { normalizePhone, formatPhone, formatDateTime } from '../utils/format'
 import DataTable from '../components/DataTable.vue'
 import Modal from '../components/Modal.vue'
 import StatusPill from '../components/StatusPill.vue'
@@ -182,7 +182,7 @@ onMounted(load)
       <template v-if="contacts.length">
         <tr v-for="c in contacts" :key="c.id" class="border-t border-slate-100 hover:bg-slate-50">
           <td class="px-4 py-3 font-medium">{{ c.name }}</td>
-          <td class="px-4 py-3 font-mono text-[13px]">{{ c.phone }}</td>
+          <td class="px-4 py-3 font-mono text-[13px]">{{ formatPhone(c.phone) }}</td>
           <td class="px-4 py-3">
             <span v-if="c.tag" class="text-xs bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full">{{ c.tag }}</span>
             <span v-else class="text-xs text-slate-400">–</span>
@@ -221,6 +221,7 @@ onMounted(load)
         <div>
           <label class="field-label">Nomor WhatsApp *</label>
           <input v-model="form.phone" class="field-input font-mono" placeholder="6281234567890" />
+          <p class="text-xs text-slate-500 mt-1">Otomatis diseragamkan — <span class="font-mono">0812…</span> dan <span class="font-mono">+62812…</span> tersimpan sebagai satu nomor yang sama.</p>
           <div class="field-hint">Format internasional tanpa spasi, mis. 6281234567890.</div>
           <div v-if="formErrors.phone" class="field-error">{{ formErrors.phone }}</div>
         </div>

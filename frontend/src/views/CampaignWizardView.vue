@@ -5,7 +5,7 @@ import { campaignsApi, templatesApi, contactsApi, testNumbersApi, settingsApi } 
 import { useToast } from '../stores/useToast'
 import {
   formatRupiah, formatNumber, formatDuration, extractVariables, wrapVar,
-  estimateDuration, estimateCost, DEFAULT_PRICE_PER_MESSAGE_IDR, truncate,
+  estimateDuration, estimateCost, DEFAULT_PRICE_PER_MESSAGE_IDR, truncate, formatPhone,
 } from '../utils/format'
 import StatusPill from '../components/StatusPill.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
@@ -206,6 +206,42 @@ async function loadRecipientsData() {
     }
   } finally {
     recipientsLoading.value = false
+  }
+}
+
+/* Tambah nomor cepat: otomatis tersimpan sebagai kontak (dedup by nomor) */
+const quickName = ref('')
+const quickPhone = ref('')
+const quickAdding = ref(false)
+
+async function quickAddContact() {
+  const phone = quickPhone.value.trim()
+  if (!phone || quickAdding.value) return
+  quickAdding.value = true
+  try {
+    const { contact, created } = await contactsApi.findOrCreate({
+      phone,
+      name: quickName.value.trim() || undefined,
+    })
+    const { items } = await contactsApi.list({ limit: 1000 })
+    allContacts.value = items || []
+    if (contact && !contact.is_blacklisted) {
+      const s = new Set(selectedContacts.value)
+      s.add(contact.id)
+      selectedContacts.value = s
+    }
+    toast.success(
+      created
+        ? `Kontak "${contact.name}" tersimpan & otomatis terpilih ✓`
+        : `Nomor sudah terdaftar — kontak "${contact.name}" otomatis terpilih ✓`
+    )
+    quickName.value = ''
+    quickPhone.value = ''
+  } catch (e) {
+    const msg = e?.response?.data?.detail || e.message || 'Gagal menambah nomor'
+    toast.error(Array.isArray(msg) ? msg.map((m) => m.msg || m).join('; ') : msg)
+  } finally {
+    quickAdding.value = false
   }
 }
 
@@ -671,7 +707,7 @@ onMounted(async () => {
           <li v-for="t in testNums" :key="t.id" class="flex items-center gap-3 border border-slate-200 rounded-lg px-4 py-2.5 text-sm">
             <span class="text-emerald-600">✓</span>
             <span class="font-medium">{{ t.label }}</span>
-            <span class="font-mono text-slate-500">{{ t.phone }}</span>
+            <span class="font-mono text-slate-500">{{ formatPhone(t.phone) }}</span>
           </li>
         </ul>
         <div v-if="!recipientsLoading && !testNums.length" class="text-sm text-slate-400">
@@ -687,6 +723,19 @@ onMounted(async () => {
           <button @click="toggleAll(false)" class="text-sm text-slate-500 underline">Batalkan semua</button>
         </div>
         <div class="text-xs text-slate-500">🚫 Kontak blacklist otomatis dikecualikan dan tidak bisa dipilih.</div>
+
+        <!-- Tambah nomor cepat: otomatis tersimpan sebagai kontak (dedup 0812…/​+62812…) -->
+        <div class="border border-dashed border-emerald-300 bg-emerald-50/50 rounded-xl p-4">
+          <div class="text-sm font-medium mb-2">⚡ Tambah nomor cepat <span class="font-normal text-slate-500">— langsung tersimpan sebagai kontak & terpilih</span></div>
+          <div class="flex flex-wrap gap-2">
+            <input v-model="quickName" type="text" placeholder="Nama PIC (opsional)" class="field-input !w-52" />
+            <input v-model="quickPhone" type="tel" placeholder="Nomor WA, mis. 0812…" class="field-input !w-52 font-mono" @keyup.enter="quickAddContact" />
+            <button @click="quickAddContact" :disabled="quickAdding || !quickPhone.trim()" class="btn-primary disabled:opacity-50">
+              {{ quickAdding ? 'Menyimpan…' : '+ Tambah' }}
+            </button>
+          </div>
+          <div class="text-xs text-slate-500 mt-1.5">Nomor otomatis diseragamkan — <span class="font-mono">0812…</span>, <span class="font-mono">+62812…</span>, <span class="font-mono">62812…</span> dianggap nomor yang sama, tidak akan dobel.</div>
+        </div>
 
         <div v-if="recipientsLoading" class="text-sm text-slate-500 text-center py-6">Memuat kontak…</div>
         <div v-else class="border border-slate-200 rounded-xl divide-y divide-slate-100 max-h-96 overflow-y-auto thin-scroll">
@@ -704,7 +753,7 @@ onMounted(async () => {
               class="accent-emerald-600 w-4 h-4"
             />
             <span class="font-medium flex-1">{{ c.name }}</span>
-            <span class="font-mono text-slate-500 text-xs">{{ c.phone }}</span>
+            <span class="font-mono text-slate-500 text-xs">{{ formatPhone(c.phone) }}</span>
             <span v-if="c.tag" class="text-xs bg-slate-100 px-2 py-0.5 rounded-full">{{ c.tag }}</span>
             <span v-if="c.is_blacklisted" class="text-xs font-semibold text-red-600">🚫 blacklist — dikecualikan</span>
           </label>

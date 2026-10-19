@@ -17,6 +17,16 @@ export function formatNumber(value) {
   return new Intl.NumberFormat('id-ID').format(Number(value))
 }
 
+/**
+ * Tampilkan nomor E.164 dengan awalan '+' agar familiar dibaca
+ * (disimpan di DB tanpa '+', mis. 62812… -> ditampilkan +62812…).
+ */
+export function formatPhone(value) {
+  if (!value) return '–'
+  const s = String(value).trim()
+  return s.startsWith('+') ? s : `+${s}`
+}
+
 export function formatDateTime(value) {
   if (!value) return '–'
   const d = new Date(value)

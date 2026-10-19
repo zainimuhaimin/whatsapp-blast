@@ -26,6 +26,8 @@ from app.schemas.common import PageMeta
 from app.schemas.contacts import (
     BlacklistToggle,
     ContactCreate,
+    ContactFindOrCreate,
+    ContactFindOrCreateResponse,
     ContactOut,
     ContactUpdate,
 )
@@ -41,6 +43,7 @@ from app.schemas.templates import (
 __all__ = [
     "LoginRequest", "UserOut", "PageMeta",
     "ContactCreate", "ContactUpdate", "ContactOut", "BlacklistToggle",
+    "ContactFindOrCreate", "ContactFindOrCreateResponse",
     "TemplateCreate", "TemplateUpdate", "TemplateOut", "TemplateVersionOut",
     "VersionCreate", "VersionApprovalUpdate",
     "CampaignCreate", "CampaignUpdate", "CampaignOut",
