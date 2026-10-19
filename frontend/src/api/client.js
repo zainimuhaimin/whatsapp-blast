@@ -128,6 +128,8 @@ export const campaignsApi = {
     http.post(`/campaigns/${id}/ai-parse-recipients`, { input_text }).then((r) => r.data),
   aiApplyRecipients: (id, items) =>
     http.post(`/campaigns/${id}/ai-apply-recipients`, { items }).then((r) => r.data),
+  applyFile: (id, payload) =>
+    http.post(`/campaigns/${id}/apply-file`, payload).then((r) => r.data),
 
   recipientVariables: (id) =>
     http.get(`/campaigns/${id}/recipient-variables`).then((r) => r.data),

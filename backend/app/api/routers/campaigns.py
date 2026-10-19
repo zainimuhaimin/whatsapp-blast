@@ -510,20 +510,18 @@ def ai_parse_recipients(campaign_id: UUID, payload: AIParseRecipientsRequest,
     return AIParseRecipientsResponse(items=out, ai_available=ai_available)
 
 
-@router.post("/{campaign_id}/ai-apply-recipients", response_model=AIApplyRecipientsResponse)
-def ai_apply_recipients(campaign_id: UUID, payload: AIApplyRecipientsRequest,
-                        request: Request, db: Session = Depends(get_db),
-                        user: User = Depends(get_current_user)):
+def _apply_recipient_rows(db: Session, campaign: Campaign,
+                         rows: list[dict], variables: set[str]):
     """
-    Simpan daftar penerima (hasil parse AI yang sudah diperiksa/diedit user):
+    Inti penyimpanan daftar penerima (dipakai AI-apply & file-apply):
     find-or-create kontak per nomor, tambah recipient, simpan override
-    variabel per penerima. Satu nomor BOLEH masuk berkali-kali — tiap baris
-    menjadi satu pesan terkirim.
-    """
-    campaign = _get_campaign_or_404(db, campaign_id)
-    _require_editable(campaign)
-    variables = set(campaign.template_version.variables or [])
+    variabel per penerima. Satu nomor BOLEH masuk berkali-kali — tiap
+    baris menjadi satu pesan terkirim. Hanya variabel yang ada di
+    `variables` (variabel template) yang disimpan sebagai override.
 
+    rows: [{phone, name, variables{var: value}}]
+    Return: (added, created_contacts, matched_contacts, skipped[])
+    """
     def _sig(phone_: str, vars_: dict) -> tuple:
         return (phone_, tuple(sorted((k, str(v or "")) for k, v in vars_.items())))
 
@@ -535,26 +533,27 @@ def ai_apply_recipients(campaign_id: UUID, payload: AIApplyRecipientsRequest,
 
     added = created = matched = 0
     skipped: list[str] = []
-    for item in payload.items:
+    for item in rows:
+        phone_raw = (item.get("phone") or "").strip()
         try:
-            phone = normalize_phone(item.phone)
+            phone = normalize_phone(phone_raw)
         except ValueError:
-            skipped.append(f"{item.phone or '(kosong)'}: nomor tidak valid, dilewati")
+            skipped.append(f"{phone_raw or '(kosong)'}: nomor tidak valid, dilewati")
             continue
-        item_vars = {k: str(v or "") for k, v in (item.variables or {}).items()
+        item_vars = {k: str(v or "") for k, v in (item.get("variables") or {}).items()
                      if k in variables}
         if _sig(phone, item_vars) in existing_sigs:
             skipped.append(f"{phone}: baris identik sudah ada, dilewati")
             continue
         contact = db.query(Contact).filter(Contact.phone == phone).first()
+        name = (item.get("name") or "").strip()
         if contact:
             matched += 1
-            name = (item.name or "").strip()
             if name and contact.name == contact.phone:
                 contact.name = name  # kontak auto-create -> perbarui namanya
         else:
             created += 1
-            contact = Contact(name=(item.name or "").strip() or phone, phone=phone)
+            contact = Contact(name=name or phone, phone=phone)
             db.add(contact)
             db.flush()
         if contact.is_blacklisted:
@@ -569,6 +568,25 @@ def ai_apply_recipients(campaign_id: UUID, payload: AIApplyRecipientsRequest,
                 recipient_id=recipient.id, variable_name=var, value=val))
         existing_sigs.add(_sig(phone, item_vars))
         added += 1
+    return added, created, matched, skipped
+
+
+@router.post("/{campaign_id}/ai-apply-recipients", response_model=AIApplyRecipientsResponse)
+def ai_apply_recipients(campaign_id: UUID, payload: AIApplyRecipientsRequest,
+                        request: Request, db: Session = Depends(get_db),
+                        user: User = Depends(get_current_user)):
+    """
+    Simpan daftar penerima (hasil parse AI yang sudah diperiksa/diedit user):
+    find-or-create kontak per nomor, tambah recipient, simpan override
+    variabel per penerima. Satu nomor BOLEH masuk berkali-kali — tiap baris
+    menjadi satu pesan terkirim.
+    """
+    campaign = _get_campaign_or_404(db, campaign_id)
+    _require_editable(campaign)
+    variables = set(campaign.template_version.variables or [])
+    rows = [{"phone": item.phone, "name": item.name,
+             "variables": dict(item.variables or {})} for item in payload.items]
+    added, created, matched, skipped = _apply_recipient_rows(db, campaign, rows, variables)
     db.commit()
     write_audit(db, "campaign.ai_apply_recipients", user_id=user.id,
                 entity_type="campaign", entity_id=str(campaign.id),
@@ -578,6 +596,57 @@ def ai_apply_recipients(campaign_id: UUID, payload: AIApplyRecipientsRequest,
     return AIApplyRecipientsResponse(
         added=added, created_contacts=created,
         matched_contacts=matched, skipped=skipped)
+
+
+@router.post("/{campaign_id}/apply-file")
+def apply_file(campaign_id: UUID, payload: dict, request: Request,
+               db: Session = Depends(get_db),
+               user: User = Depends(get_current_user)):
+    """
+    Terapkan data file (hasil parse /file-uploads) ke campaign yang sudah ada:
+    tiap baris menjadi penerima + override variabel per baris.
+    Dipakai tab 'Upload file' di wizard langkah 3 (alur unified).
+    """
+    from app.models import FileUpload
+
+    campaign = _get_campaign_or_404(db, campaign_id)
+    _require_editable(campaign)
+    try:
+        upload_id = UUID(str(payload.get("upload_id") or ""))
+    except ValueError:
+        raise HTTPException(status_code=400, detail="upload_id tidak valid")
+    upload = db.get(FileUpload, upload_id)
+    if not upload or (upload.user_id and upload.user_id != user.id):
+        raise HTTPException(status_code=404, detail="file upload tidak ditemukan")
+    columns = {c["variable"] for c in (upload.columns or []) if c.get("variable")}
+    phone_variable = (payload.get("phone_variable") or "").strip()
+    if phone_variable not in columns:
+        raise HTTPException(
+            status_code=400,
+            detail="pilih kolom nomor telepon yang valid dari file",
+        )
+    variables = set(campaign.template_version.variables or [])
+    rows = []
+    for row in (upload.rows or []):
+        name = ""
+        for nk in ("nama", "name", "nama_lengkap"):
+            if row.get(nk):
+                name = str(row[nk])
+                break
+        vars_ = {k: str(v) for k, v in row.items()
+                 if k != phone_variable and v not in (None, "")}
+        rows.append({"phone": str(row.get(phone_variable) or ""),
+                     "name": name, "variables": vars_})
+    added, created, matched, skipped = _apply_recipient_rows(db, campaign, rows, variables)
+    db.commit()
+    write_audit(db, "campaign.apply_file", user_id=user.id,
+                entity_type="campaign", entity_id=str(campaign.id),
+                metadata={"upload_id": str(upload.id), "filename": upload.filename,
+                          "added": added, "created_contacts": created,
+                          "matched_contacts": matched, "skipped": skipped},
+                ip_address=_ip(request))
+    return {"ok": True, "added": added, "created_contacts": created,
+            "matched_contacts": matched, "skipped": skipped}
 
 
 @router.get("/{campaign_id}/recipient-variables", response_model=RecipientVariablesResponse)

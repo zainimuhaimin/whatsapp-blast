@@ -204,16 +204,15 @@ Jalur resmi (Meta Cloud API) tidak butuh pairing — cukup pastikan kredensial v
 
 ---
 
-## 10. Blast dari File (CSV/Excel)
+## 10. Input dari File (CSV/Excel) — di Langkah 3 Wizard
 
-Menu **Blast dari File** — untuk pesan yang tidak terpaku template: tulis pesan bebas, upload file data, header kolom otomatis jadi variabel.
+Pembuatan campaign kini **satu tempat**: wizard Campaign Baru. Di **langkah 3 (Input data)** ada tiga cara memasukkan data — pilih tab **Upload file** untuk memakai file:
 
-1. **Tulis pesan** — ketik bebas. Variabel ditulis `{{nama_variabel}}`.
-2. **Upload file** (.csv / .xlsx, maks 10 MB & 5000 baris) — baris pertama dianggap header. Contoh header `Nama Lengkap` otomatis menjadi variabel `{{nama_lengkap}}`; klik chip variabel untuk menempelkannya di posisi kursor. Pilih **kolom nomor telepon** (biasanya terdeteksi otomatis).
-3. **Preview** — render 5 baris pertama; baris bernomor tidak valid otomatis dilewati (dilaporkan jumlahnya).
-4. **Buat campaign** — isi nama, pilih jalur & mode test → campaign draft dibuat (beserta template-nya) dan Anda diarahkan ke halaman **review** seperti biasa untuk konfirmasi sebelum kirim.
+1. **Upload file** (.csv / .xlsx, maks 10 MB & 5000 baris) — baris pertama dianggap header. Contoh header `Nama Lengkap` otomatis menjadi variabel `{{nama_lengkap}}`. Pilih **kolom nomor telepon** (biasanya terdeteksi otomatis).
+2. **Preview** — render 5 baris pertama memakai pesan campaign saat ini; baris bernomor tidak valid otomatis dilewati (dilaporkan jumlahnya).
+3. **Terapkan sebagai penerima** — tiap baris menjadi penerima + nilai variabel per baris. Kolom file otomatis tersedia sebagai chip variabel di editor **Ubah pesan (fleksibel)** — jadi pesan tetap bisa ditulis bebas mengikuti kolom file.
 
-Tiap baris file = 1 penerima; kolom selain nomor telepon menjadi nilai variabel per penerima (bisa diedit di langkah Mapping wizard).
+Setelah diterapkan, lanjut seperti biasa: Mapping (variabel yang sudah terisi dari file tampil sebagai "Terisi AI per penerima" dan tidak perlu di-mapping manual) → Pilih penerima → Review.
 
 ## 11. Kirim Manual via WhatsApp (wa.me)
 

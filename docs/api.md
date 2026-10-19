@@ -54,6 +54,7 @@ Sumber desain: `architecture.md` §3. Detail skema request/response final mengik
 | GET | `/api/campaigns/{id}/chat-links` | Link wa.me per penerima (kirim manual) | Query: `page`, `limit` → `{phone, name, message, wa_url}` |
 | POST | `/api/campaigns/{id}/recipients/{rid}/manual-status` | Tandai hasil kirim manual | `{status: 'sent' \| 'skipped'}` — audit `campaign.recipient_manual_status` |
 | POST | `/api/campaigns/{id}/message-body` | Ubah teks pesan campaign | `{body}` → versi template baru; campaign diarahkan ke versi tersebut |
+| POST | `/api/campaigns/{id}/apply-file` | Terapkan file ke campaign (tab Upload file wizard) | `{upload_id, phone_variable}` → penerima + override per baris |
 | GET | `/api/campaigns/{id}/review` | Payload halaman review | Total penerima, tabel variabel × nilai, sample 5 pesan ter-render, estimasi durasi & biaya, daftar error validasi |
 | POST | `/api/campaigns/{id}/confirm` | Konfirmasi & mulai blast | Validasi penuh → `queued` (atau `scheduled` bila `send_at` di masa depan) → enqueue dispatch; audit `campaign.confirm_blast` |
 | POST | `/api/campaigns/{id}/pause` | Jeda pengiriman | Status → `paused` |

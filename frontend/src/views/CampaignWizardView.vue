@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, onMounted, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { campaignsApi, templatesApi, contactsApi, testNumbersApi, settingsApi } from '../api/client'
+import { campaignsApi, templatesApi, contactsApi, testNumbersApi, settingsApi, fileUploadsApi } from '../api/client'
 import { useToast } from '../stores/useToast'
 import {
   formatRupiah, formatNumber, formatDuration, extractVariables, wrapVar,
@@ -93,7 +93,8 @@ const msgSaving = ref(false)
 const msgEditVars = computed(() => extractVariables(msgEdit.value || ''))
 const msgEditChips = computed(() => {
   const seen = []
-  for (const v of [...selectedVariables.value, ...msgEditVars.value]) {
+  const fileVars = fileColumns.value.map((c) => c.variable).filter(Boolean)
+  for (const v of [...selectedVariables.value, ...msgEditVars.value, ...fileVars]) {
     if (!seen.includes(v)) seen.push(v)
   }
   return seen
@@ -151,6 +152,85 @@ async function saveMsgEdit() {
     toast.success(`Pesan disimpan sebagai versi ${res.version_number}.`)
   } finally {
     msgSaving.value = false
+  }
+}
+
+// --- Tab Upload file: terapkan CSV/XLSX ke campaign ini ---
+const fileUpload = ref(null) // hasil /file-uploads/parse
+const filePhoneVar = ref('')
+const fileUploading = ref(false)
+const filePreviewing = ref(false)
+const filePreview = ref(null)
+const fileApplying = ref(false)
+const fileColumns = computed(() => fileUpload.value?.columns || [])
+
+async function onFilePick(e) {
+  const file = e.target.files?.[0]
+  if (!file) return
+  fileUploading.value = true
+  filePreview.value = null
+  try {
+    const res = await fileUploadsApi.parse(file)
+    fileUpload.value = res
+    filePhoneVar.value = res.phone_variable_suggestion || ''
+    if (!res.phone_variable_suggestion) {
+      toast.error('Kolom nomor telepon tidak terdeteksi otomatis — pilih manual di bawah.')
+    } else {
+      toast.success(`${res.row_count} baris dibaca dari ${res.filename}.`)
+    }
+  } finally {
+    fileUploading.value = false
+    e.target.value = ''
+  }
+}
+
+function resetFileUpload() {
+  fileUpload.value = null
+  filePhoneVar.value = ''
+  filePreview.value = null
+}
+
+async function doFilePreview() {
+  if (!selectedVersion.value) {
+    toast.error('Pilih template di langkah 2 dulu.')
+    return
+  }
+  if (!filePhoneVar.value) {
+    toast.error('Pilih kolom nomor telepon.')
+    return
+  }
+  filePreviewing.value = true
+  try {
+    filePreview.value = await fileUploadsApi.preview(fileUpload.value.upload_id, {
+      message: msgEdit.value.trim() || selectedVersion.value.version.body,
+      phone_variable: filePhoneVar.value,
+    })
+  } finally {
+    filePreviewing.value = false
+  }
+}
+
+async function doFileApply() {
+  if (!campaign.value) return
+  if (!filePhoneVar.value) {
+    toast.error('Pilih kolom nomor telepon.')
+    return
+  }
+  fileApplying.value = true
+  try {
+    const res = await campaignsApi.applyFile(campaign.value.id, {
+      upload_id: fileUpload.value.upload_id,
+      phone_variable: filePhoneVar.value,
+    })
+    const warns = []
+    if (res.skipped?.length) warns.push(`${res.skipped.length} baris dilewati`)
+    toast.success(
+      `${res.added} penerima ditambahkan dari file.` + (warns.length ? ` (${warns.join('; ')})` : '')
+    )
+    existingRecipients.value += res.added
+    filePreview.value = null
+  } finally {
+    fileApplying.value = false
   }
 }
 
@@ -881,16 +961,19 @@ onMounted(async () => {
       </div>
     </section>
 
-    <!-- ================= LANGKAH 3: INPUT AI ================= -->
+    <!-- ================= LANGKAH 3: INPUT DATA ================= -->
     <section v-if="step === 3" class="card card-pad form-grid">
       <div>
-        <h2 class="section-title">3. Input AI</h2>
+        <h2 class="section-title">3. Input data</h2>
         <div class="seg-toggle mt-2" role="tablist">
           <button :class="['seg-btn', { active: aiMode === 'recipients' }]" @click="aiMode = 'recipients'">
-            <Icon name="users" :size="14" /> Daftar penerima
+            <Icon name="users" :size="14" /> AI — Daftar penerima
           </button>
           <button :class="['seg-btn', { active: aiMode === 'general' }]" @click="aiMode = 'general'">
-            <Icon name="zap" :size="14" /> Nilai umum
+            <Icon name="zap" :size="14" /> AI — Nilai umum
+          </button>
+          <button :class="['seg-btn', { active: aiMode === 'file' }]" @click="aiMode = 'file'">
+            <Icon name="upload" :size="14" /> Upload file
           </button>
         </div>
       </div>
@@ -1058,6 +1141,84 @@ onMounted(async () => {
           </button>
         </div>
       </template>
+
+      <!-- ===== Mode: upload file (tiap baris = penerima) ===== -->
+      <template v-if="aiMode === 'file'">
+        <p class="card-label -mt-2">
+          Upload CSV/Excel — tiap baris menjadi penerima, tiap kolom menjadi nilai variabel per baris.
+          Kolom file bisa ditempel ke pesan lewat editor "Ubah pesan (fleksibel)" di atas.
+        </p>
+
+        <div v-if="!fileUpload" class="upload-drop">
+          <Icon name="upload" :size="22" class="upload-icon" />
+          <label class="btn btn-secondary">
+            {{ fileUploading ? 'Mengunggah…' : 'Pilih file CSV / Excel' }}
+            <input type="file" accept=".csv,.xlsx,.xls" class="file-hidden" :disabled="fileUploading" @change="onFilePick" />
+          </label>
+          <p class="card-label mt-2">Maks 10 MB, 5000 baris. Baris pertama dianggap header.</p>
+        </div>
+
+        <template v-else>
+          <div class="upload-meta">
+            <div>
+              <div class="font-semibold text-sm">{{ fileUpload.filename }}</div>
+              <div class="card-label">{{ fileUpload.row_count }} baris data</div>
+            </div>
+            <button @click="resetFileUpload" class="btn btn-tertiary text-sm" type="button">
+              <Icon name="x" :size="14" /> Ganti file
+            </button>
+          </div>
+
+          <div class="mt-3">
+            <div class="card-label mb-2">Kolom terdeteksi:</div>
+            <div class="chip-row">
+              <span v-for="c in fileColumns" :key="c.variable" class="chip-var mono" :title="`Header asli: ${c.header}`">
+                {{ wrapVar(c.variable) }}
+              </span>
+            </div>
+          </div>
+
+          <div class="mt-3 max-w-sm">
+            <label class="card-label" for="wf-phone-col">Kolom nomor telepon</label>
+            <select id="wf-phone-col" v-model="filePhoneVar" class="field-input mt-1">
+              <option value="" disabled>\u2014 pilih kolom \u2014</option>
+              <option v-for="c in fileColumns" :key="c.variable" :value="c.variable">
+                {{ c.header }} \u2192 {{ wrapVar(c.variable) }}
+              </option>
+            </select>
+          </div>
+
+          <div class="mt-3 flex flex-wrap gap-2">
+            <button @click="doFilePreview" :disabled="filePreviewing" class="btn btn-secondary text-sm" type="button">
+              <Icon name="eye" :size="14" /> {{ filePreviewing ? 'Memproses…' : 'Preview 5 baris' }}
+            </button>
+            <button @click="doFileApply" :disabled="fileApplying || !filePhoneVar" class="btn btn-accent text-sm" type="button">
+              <Icon name="check" :size="14" /> {{ fileApplying ? 'Menerapkan…' : 'Terapkan sebagai penerima' }}
+            </button>
+          </div>
+
+          <div v-if="filePreview" class="mt-4">
+            <div v-if="filePreview.unknown_variables?.length" class="alert-warning mb-3">
+              <Icon name="alert" :size="15" class="mt-0.5 shrink-0" />
+              <span>Variabel ini dipakai di pesan tapi <b>tidak ada</b> di file: {{ filePreview.unknown_variables.map(wrapVar).join(', ') }} \u2014 akan ter-render kosong.</span>
+            </div>
+            <div class="card-label mb-3">
+              {{ filePreview.valid_rows }} baris bernomor valid
+              <template v-if="filePreview.skipped_rows"> \u00b7 {{ filePreview.skipped_rows }} baris nomornya tidak valid (otomatis dilewati)</template>
+            </div>
+            <div class="preview-list">
+              <div v-for="p in filePreview.previews" :key="p.row" class="preview-item">
+                <div class="preview-head">
+                  <span class="font-semibold text-sm">Baris {{ p.row }}</span>
+                  <span class="mono text-xs card-label">{{ p.phone || 'nomor tidak valid' }}</span>
+                  <span v-if="!p.phone_valid" class="pill pill-negative">dilewati</span>
+                </div>
+                <div class="sample-wa">{{ p.message }}</div>
+              </div>
+            </div>
+          </div>
+        </template>
+      </template>
     </section>
 
     <!-- ================= LANGKAH 4: MAPPING ================= -->
@@ -1156,7 +1317,7 @@ onMounted(async () => {
 
       <div v-if="!form.is_test_mode && existingRecipients > 0" class="alert-info">
         <Icon name="info" :size="15" class="mt-0.5 shrink-0" />
-        <div><b>{{ existingRecipients }} penerima sudah ada</b> (dari AI di langkah 3). Anda bisa tambah lagi di bawah, atau langsung lanjut — yang sudah ada ikut terkirim.</div>
+        <div><b>{{ existingRecipients }} penerima sudah ada</b> (dari AI/file di langkah 3). Anda bisa tambah lagi di bawah, atau langsung lanjut — yang sudah ada ikut terkirim.</div>
       </div>
 
       <div v-if="form.is_test_mode">
@@ -1536,6 +1697,20 @@ onMounted(async () => {
 .review-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 .wizard-nav { display: flex; justify-content: space-between; margin-top: 24px; gap: 8px; }
 .wizard-nav-start { justify-content: flex-start; }
+
+/* Tab upload file (langkah 3) */
+.upload-drop {
+  border: 1px dashed var(--rule); border-radius: var(--radius);
+  padding: 28px 16px; text-align: center;
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+}
+.upload-icon { color: var(--faint); margin-bottom: 8px; }
+.upload-meta { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.file-hidden { display: none; }
+.preview-list { display: flex; flex-direction: column; gap: 12px; }
+.preview-item { border: 1px solid var(--rule); border-radius: var(--radius); padding: 12px; }
+.preview-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; flex-wrap: wrap; }
+.sample-wa { background: #ece5dd; border-radius: var(--radius-card); padding: 16px; white-space: pre-wrap; }
 
 /* Editor pesan fleksibel (langkah 3) */
 .msg-edit-card {
