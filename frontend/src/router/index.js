@@ -49,6 +49,12 @@ const routes = [
         meta: { title: 'Nomor Test' },
       },
       {
+        path: 'sender',
+        name: 'sender',
+        component: () => import('../views/SenderView.vue'),
+        meta: { title: 'Koneksi WA' },
+      },
+      {
         path: 'settings',
         name: 'settings',
         component: () => import('../views/SettingsView.vue'),

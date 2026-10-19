@@ -125,6 +125,11 @@ app.get('/status', (req, res) => {
   });
 });
 
+app.get('/qr-data', (req, res) => {
+  // QR mentah (string) untuk dirender klien sendiri; null bila tak ada / sudah connect
+  res.json({ connected, qr: connected ? null : currentQR, phone: myPhone });
+});
+
 app.get('/qr', async (req, res) => {
   if (connected) {
     return res.send('<h2>Sudah terhubung' + (myPhone ? ' sebagai ' + myPhone : '') + '. Tidak perlu scan QR.</h2>');

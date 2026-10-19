@@ -6,6 +6,7 @@ from app.api.routers import (
     auth,
     campaigns,
     contacts,
+    sender,
     settings,
     templates,
     test_numbers,
@@ -21,3 +22,4 @@ api_router.include_router(test_numbers.router)
 api_router.include_router(settings.router)
 api_router.include_router(audit_logs.router)
 api_router.include_router(webhooks.router)
+api_router.include_router(sender.router)

@@ -354,7 +354,7 @@ async function loadRecipientsData() {
       const { items } = await testNumbersApi.list()
       testNums.value = (items || []).filter((t) => t.is_active !== false)
     } else {
-      const { items } = await contactsApi.list({ limit: 1000 })
+      const { items } = await contactsApi.list({ limit: 100 })
       allContacts.value = items || []
     }
     // Penerima yang sudah ditambahkan (mis. via AI di langkah 3)
@@ -384,7 +384,7 @@ async function quickAddContact() {
       phone,
       name: quickName.value.trim() || undefined,
     })
-    const { items } = await contactsApi.list({ limit: 1000 })
+    const { items } = await contactsApi.list({ limit: 100 })
     allContacts.value = items || []
     if (contact && !contact.is_blacklisted) {
       const s = new Set(selectedContacts.value)
@@ -805,7 +805,8 @@ onMounted(async () => {
       <!-- ===== Mode: daftar penerima (nilai beda per orang) ===== -->
       <template v-if="aiMode === 'recipients'">
         <p class="card-label -mt-2">
-          Tempel daftar penerima (satu entri per baris/blok: nama, nomor HP, dan data tiap pos).
+          Tempel daftar penerima dalam bentuk teks bebas apa pun (satu entri per baris/blok: nama, nomor HP,
+          dan data pendukungnya — AI membaca cerdas mengikuti variabel template Anda).
           AI akan memecahnya per penerima beserta nilai variabelnya. Periksa dan edit hasilnya
           sebelum disimpan. Satu nomor boleh muncul berkali-kali, tiap baris jadi satu pesan.
         </p>

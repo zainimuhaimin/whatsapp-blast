@@ -173,6 +173,22 @@ Selalu uji ke nomor test dulu untuk campaign penting.
 
 ---
 
+## 9. Koneksi WA — Pairing Nomor Pengirim (Jalur Non-Resmi)
+
+Menu **Koneksi WA** menampilkan status pairing nomor pengirim untuk jalur non-resmi (Baileys):
+
+- **Terhubung** — tampil nomor yang terhubung + lama sesi. Campaign jalur non-resmi siap dikirim.
+- **Menunggu pairing** — tampil QR code. Scan dari WhatsApp di HP nomor testing
+  (**Pengaturan → Perangkat Tertaut → Tautkan Perangkat**). QR refresh otomatis dan status
+  dicek tiap 8 detik; halaman otomatis berubah saat berhasil terhubung.
+- **Putuskan koneksi** — logout + hapus sesi (perlu scan QR ulang untuk pairing kembali).
+
+Jalur resmi (Meta Cloud API) tidak butuh pairing — cukup pastikan kredensial valid di **Pengaturan**.
+
+> Selalu gunakan **nomor khusus testing** untuk jalur non-resmi, jangan nomor utama/pribadi.
+
+---
+
 ## Tips Anti-Banned
 
 1. **Hanya kirim ke yang sudah opt-in** — ini aturan nomor satu WhatsApp/Meta. Daftar beli/scrape = jalan tercepat menuju banned.

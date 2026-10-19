@@ -3,7 +3,7 @@
  * AppLayout: shell Ruled T-frame — sidebar 232px + top bar 64px (desktop),
  * top bar 52px + menu sheet layar penuh (mobile).
  */
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { RouterLink, useRouter, useRoute } from 'vue-router'
 import { authApi, settingsApi } from '../api/client'
 import { useAuth } from '../stores/useAuth'
@@ -18,12 +18,21 @@ const toast = useToast()
 const menuOpen = ref(false)
 const provider = ref('')
 
+// Kunci scroll body saat menu sheet terbuka (mobile)
+watch(menuOpen, (open) => {
+  document.body.style.overflow = open ? 'hidden' : ''
+})
+
+// Tutup sheet bila rute berubah (mis. tombol back browser)
+watch(() => route.fullPath, () => { menuOpen.value = false })
+
 const nav = [
   { to: '/', label: 'Dashboard', icon: 'grid', end: true },
   { to: '/campaigns/new', label: 'Campaign Baru', icon: 'send' },
   { to: '/contacts', label: 'Kontak', icon: 'users' },
   { to: '/templates', label: 'Template', icon: 'chat' },
   { to: '/test-numbers', label: 'Nomor Test', icon: 'flask' },
+  { to: '/sender', label: 'Koneksi WA', icon: 'wifi' },
   { to: '/settings', label: 'Pengaturan', icon: 'gear' },
   { to: '/audit-logs', label: 'Audit Log', icon: 'scroll' },
 ]
@@ -229,7 +238,7 @@ onMounted(async () => {
   z-index: 20;
 }
 .menu-btn { display: none; }
-.crumb { font-size: 14px; min-width: 0; }
+.crumb { font-size: 14px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .crumb-parent { color: var(--faint); }
 .crumb-sep { margin: 0 6px; color: var(--control); }
 .crumb-current { font-weight: 600; color: var(--text); }
@@ -275,6 +284,10 @@ onMounted(async () => {
 .menu-foot { border-top: 1px solid var(--rule); padding: 16px; display: grid; gap: 8px; }
 
 /* ---- Responsif ---- */
+@media (min-width: 1024px) {
+  /* Sheet mobile tidak boleh menutupi tampilan desktop (mis. setelah resize) */
+  .menu-sheet { display: none; }
+}
 @media (max-width: 1023px) {
   .sidebar { display: none; }
   .topbar { height: 52px; padding: 0 16px; }
