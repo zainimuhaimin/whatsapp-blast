@@ -207,6 +207,7 @@ class SettingUpdate(BaseModel):
 class SettingOut(BaseModel):
     key: str
     value: object
+    is_secret: bool = False  # True -> value hanya pratinjau tersamar, bukan nilai asli
 
 
 class AuditLogOut(BaseModel):

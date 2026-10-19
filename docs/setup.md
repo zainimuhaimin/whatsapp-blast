@@ -35,7 +35,8 @@ JWT_SECRET=<acak-panjang-min-32-karakter>
 ADMIN_USERNAME=admin
 ADMIN_PASSWORD=<ganti-sekarang-juga>
 
-# --- AI (tanpa GEMINI_API_KEY, fitur ai-extract fallback graceful) ---
+# --- AI (opsional di ENV — lebih mudah diatur via UI: Pengaturan → AI) ---
+# Tanpa GEMINI_API_KEY (ENV maupun UI), fitur ai-extract fallback graceful.
 GEMINI_API_KEY=<kunci-api-gemini-anda>
 GEMINI_MODEL=gemini-2.0-flash
 

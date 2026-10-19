@@ -59,6 +59,11 @@ Buka menu **Campaign** → **Campaign Baru**, lalu ikuti wizard:
 
 ## 4. Input AI — Isi Variabel Secara Otomatis
 
+> **Setup sekali di awal:** buka menu **Pengaturan → 🤖 AI — Google Gemini**.
+> Ambil API key gratis di [Google AI Studio](https://aistudio.google.com/apikey) (klik *Get API Key*),
+> tempel di kolom API Key, pilih model (mis. `gemini-2.5-flash`), lalu klik **🔌 Test koneksi**
+> untuk memastikan key valid. Key tersimpan aman — tidak pernah ditampilkan utuh.
+
 Di langkah ini Anda cukup menulis **teks bebas** berisi info campaign, lalu AI (Google Gemini) mengekstrak nilai tiap variabel. Hasilnya **selalu bisa Anda edit manual** sebelum lanjut.
 
 **Contoh konkret:**

@@ -160,6 +160,7 @@ export const settingsApi = {
   list: () => http.get('/settings').then((r) => r.data),
   update: (key, value) =>
     http.put(`/settings/${encodeURIComponent(key)}`, { value }).then((r) => r.data),
+  testGemini: () => http.post('/settings/gemini/test').then((r) => r.data),
 }
 
 /* ------------------------------- audit logs ----------------------------- */

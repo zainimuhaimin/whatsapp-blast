@@ -220,6 +220,7 @@ def ai_extract(campaign_id: UUID, payload: AIExtractRequest, request: Request,
     values, ai_available = gemini_service.extract_variable_values(
         payload.input_text, variables,
         template_body=campaign.template_version.body,
+        db=db,
     )
 
     saved: dict[str, str] = {}

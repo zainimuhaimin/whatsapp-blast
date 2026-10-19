@@ -44,6 +44,23 @@ _SYSTEM_PROMPT_NOVARS = (
 _MAX_TEMPLATE_CONTEXT_CHARS = 2000
 
 
+def _resolve_credentials(db=None) -> tuple[str, str]:
+    """
+    Ambil (api_key, model_name) yang efektif: dari DB (Pengaturan → AI)
+    bila diisi, fallback ke environment variable.
+    """
+    api_key = ""
+    model_name = ""
+    if db is not None:
+        try:
+            from app.services import campaign_service
+            api_key = str(campaign_service.get_setting(db, "gemini.api_key") or "")
+            model_name = str(campaign_service.get_setting(db, "gemini.model") or "")
+        except Exception as exc:
+            log.warning("gagal baca setting gemini dari DB (%s) -> pakai ENV", exc)
+    return api_key or settings.GEMINI_API_KEY, model_name or settings.GEMINI_MODEL
+
+
 def _build_system_prompt(variables: list[str], template_body: str | None) -> str:
     """Susun system prompt; sertakan body template sebagai konteks bila ada."""
     body = (template_body or "").strip()
@@ -57,16 +74,20 @@ def _build_system_prompt(variables: list[str], template_body: str | None) -> str
 
 
 def extract_variable_values(
-    input_text: str, variables: list[str], template_body: str | None = None
+    input_text: str, variables: list[str], template_body: str | None = None,
+    db=None,
 ) -> tuple[dict[str, str], bool]:
     """
     Ekstrak nilai variabel dari teks bebas user.
     template_body (opsional): body template pesan, dikirim sebagai konteks
     agar LLM memahami maksud tiap variabel.
+    db (opsional): session DB untuk membaca API key & model dari Pengaturan
+    (fallback ke ENV bila tidak diisi).
     Return: (mapping {variabel: value}, ai_available).
     """
-    if not settings.GEMINI_API_KEY:
-        log.info("GEMINI_API_KEY kosong -> ai-extract fallback tanpa AI")
+    api_key, model_name = _resolve_credentials(db)
+    if not api_key:
+        log.info("GEMINI_API_KEY kosong (ENV & Pengaturan) -> ai-extract fallback tanpa AI")
         return {}, False
     try:
         import google.generativeai as genai
@@ -75,9 +96,9 @@ def extract_variable_values(
         return {}, False
 
     try:
-        genai.configure(api_key=settings.GEMINI_API_KEY)
+        genai.configure(api_key=api_key)
         model = genai.GenerativeModel(
-            model_name=settings.GEMINI_MODEL,
+            model_name=model_name,
             system_instruction=_build_system_prompt(variables, template_body),
         )
         response = model.generate_content(input_text)

@@ -33,6 +33,7 @@ SETTING_DEFAULTS: dict[str, object] = {
     "wa.price_per_message_idr": dict(DEFAULT_PRICES),
     "wa.daily_limit": 250,
     "gemini.model": "gemini-2.0-flash",
+    "gemini.api_key": "",  # kosong = pakai GEMINI_API_KEY dari environment
 }
 
 
