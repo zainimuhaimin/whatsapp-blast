@@ -2,15 +2,20 @@
 import { ref, computed, onMounted } from 'vue'
 import { RouterLink } from 'vue-router'
 import { campaignsApi } from '../api/client'
+import { useToast } from '../stores/useToast'
 import { formatDateTime, formatNumber } from '../utils/format'
 import DataTable from '../components/DataTable.vue'
 import StatusPill from '../components/StatusPill.vue'
+import ConfirmDialog from '../components/ConfirmDialog.vue'
 import Icon from '../components/Icon.vue'
 
+const toast = useToast()
 const campaigns = ref([])
 const statsMap = ref({}) // campaign_id -> stats
 const loading = ref(false)
 const statusFilter = ref('')
+const deleteTarget = ref(null)
+const deleting = ref(false)
 
 const STATUSES = [
   { value: '', label: 'Semua status' },
@@ -64,6 +69,19 @@ async function load() {
 }
 
 onMounted(load)
+
+async function doDelete() {
+  if (!deleteTarget.value) return
+  deleting.value = true
+  try {
+    await campaignsApi.remove(deleteTarget.value.id)
+    toast.success(`Campaign "${deleteTarget.value.name}" dihapus.`)
+    deleteTarget.value = null
+    await load()
+  } finally {
+    deleting.value = false
+  }
+}
 </script>
 
 <template>
@@ -133,6 +151,7 @@ onMounted(load)
         <th class="num">Dibaca</th>
         <th class="num">Gagal</th>
         <th>Jadwal</th>
+        <th><span class="sr-only">Aksi</span></th>
       </template>
       <template v-if="filtered.length">
         <tr v-for="c in filtered" :key="c.id">
@@ -161,10 +180,41 @@ onMounted(load)
           <td class="cell-muted text-sm">
             {{ c.send_at ? formatDateTime(c.send_at) : 'Langsung' }}
           </td>
+          <td class="whitespace-nowrap">
+            <template v-if="c.status === 'draft'">
+              <RouterLink
+                :to="`/campaigns/new?campaign=${c.id}`"
+                class="icon-btn"
+                title="Lanjutkan / edit draft ini"
+                aria-label="Edit draft"
+              >
+                <Icon name="pencil" :size="15" />
+              </RouterLink>
+              <button
+                @click="deleteTarget = c"
+                class="icon-btn is-danger"
+                title="Hapus draft ini"
+                aria-label="Hapus draft"
+              >
+                <Icon name="trash" :size="15" />
+              </button>
+            </template>
+          </td>
         </tr>
       </template>
     </DataTable>
   </div>
+
+  <ConfirmDialog
+    :open="!!deleteTarget"
+    title="Hapus campaign?"
+    :message="`Hapus draft ${deleteTarget?.name}? Data penerima & mapping ikut terhapus. Tindakan ini tidak bisa dibatalkan.`"
+    confirm-label="Ya, hapus"
+    danger
+    :loading="deleting"
+    @cancel="deleteTarget = null"
+    @confirm="doDelete"
+  />
 </template>
 
 <style scoped>

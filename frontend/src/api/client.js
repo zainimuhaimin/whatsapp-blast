@@ -144,6 +144,8 @@ export const campaignsApi = {
     http.post(`/campaigns/${id}/recipients`, { contact_ids }).then((r) => r.data),
   recipients: (id, q = {}) =>
     http.get(`/campaigns/${id}/recipients`, params(q)).then(unwrapPage),
+  retryRecipient: (id, recipientId) =>
+    http.post(`/campaigns/${id}/recipients/${recipientId}/retry`).then((r) => r.data),
 
   review: (id) => http.get(`/campaigns/${id}/review`).then((r) => r.data),
   confirm: (id) => http.post(`/campaigns/${id}/confirm`).then((r) => r.data),

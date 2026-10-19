@@ -85,6 +85,57 @@ def _recipient_out(db: Session, r: CampaignRecipient) -> RecipientOut:
     return out
 
 
+@router.post("/{campaign_id}/recipients/{recipient_id}/retry")
+def retry_recipient(campaign_id: UUID, recipient_id: UUID, request: Request,
+                    db: Session = Depends(get_db),
+                    user: User = Depends(get_current_user)):
+    """
+    Coba ulang kirim ke satu penerima yang gagal (tombol retry per penerima).
+    Reset ke 'pending'; bila campaign sudah 'completed', kembalikan ke 'queued'
+    dan trigger dispatch agar worker memprosesnya.
+    """
+    campaign = _get_campaign_or_404(db, campaign_id)
+    recipient = (
+        db.query(CampaignRecipient)
+        .filter(CampaignRecipient.id == recipient_id,
+                CampaignRecipient.campaign_id == campaign.id)
+        .first()
+    )
+    if not recipient:
+        raise HTTPException(status_code=404, detail="penerima tidak ditemukan")
+    if recipient.status != "failed":
+        raise HTTPException(
+            status_code=409,
+            detail=f"hanya penerima berstatus 'failed' yang bisa di-retry "
+                   f"(saat ini: '{recipient.status}')",
+        )
+    if campaign.status == "cancelled":
+        raise HTTPException(status_code=409, detail="campaign sudah dibatalkan")
+
+    recipient.status = "pending"
+    recipient.retry_count = 0
+    recipient.last_error = None
+    recipient.next_retry_at = None
+    requeued = False
+    if campaign.status == "completed":
+        campaign.status = "queued"
+        campaign.finished_at = None
+        requeued = True
+    db.commit()
+
+    if campaign.status in ("queued", "sending"):
+        from app.worker.tasks.sender import dispatch_campaign
+        dispatch_campaign.delay(str(campaign.id))
+
+    write_audit(db, "campaign.recipient_retry", user_id=user.id,
+                entity_type="campaign", entity_id=str(campaign.id),
+                metadata={"recipient_id": str(recipient.id),
+                          "phone": recipient.phone, "requeued": requeued},
+                ip_address=_ip(request))
+    return {"ok": True, "recipient_id": str(recipient.id),
+            "status": "pending", "requeued": requeued}
+
+
 @router.get("")
 def list_campaigns(
     status: str | None = Query(default=None),

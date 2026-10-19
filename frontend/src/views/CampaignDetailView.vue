@@ -33,6 +33,7 @@ const msgStatus = ref('')
 const msgPage = ref(1)
 
 const confirmAction = ref(null) // 'pause' | 'resume' | 'cancel'
+const retryTarget = ref(null) // recipient yang akan di-retry
 const acting = ref(false)
 let pollTimer = null
 
@@ -121,6 +122,19 @@ async function doAction() {
     const labels = { pause: 'dijeda', resume: 'dilanjutkan', cancel: 'dibatalkan' }
     toast.success(`Campaign ${labels[confirmAction.value]}.`)
     confirmAction.value = null
+    await refreshAll()
+  } finally {
+    acting.value = false
+  }
+}
+
+async function doRetryRecipient() {
+  if (!retryTarget.value) return
+  acting.value = true
+  try {
+    await campaignsApi.retryRecipient(id, retryTarget.value.id)
+    toast.success(`Retry dikirim untuk ${retryTarget.value.phone}.`)
+    retryTarget.value = null
     await refreshAll()
   } finally {
     acting.value = false
@@ -223,6 +237,7 @@ onUnmounted(() => {
           <th class="num">Retry</th>
           <th>Terkirim</th>
           <th>Error</th>
+          <th><span class="sr-only">Aksi</span></th>
         </template>
         <template v-if="recipients.length">
           <tr v-for="r in recipients" :key="r.id">
@@ -232,6 +247,17 @@ onUnmounted(() => {
             <td class="num">{{ r.retry_count || 0 }}×</td>
             <td class="card-label text-xs">{{ formatDateTime(r.sent_at) }}</td>
             <td class="text-xs max-w-56 truncate" style="color: var(--negative)" :title="r.last_error">{{ r.last_error || '–' }}</td>
+            <td class="whitespace-nowrap">
+              <button
+                v-if="r.status === 'failed'"
+                @click="retryTarget = r"
+                class="icon-btn"
+                title="Coba kirim ulang ke penerima ini"
+                aria-label="Coba kirim ulang"
+              >
+                <Icon name="refresh" :size="15" />
+              </button>
+            </td>
           </tr>
         </template>
       </DataTable>
@@ -279,6 +305,15 @@ onUnmounted(() => {
       :loading="acting"
       @cancel="confirmAction = null"
       @confirm="doAction"
+    />
+    <ConfirmDialog
+      :open="!!retryTarget"
+      title="Coba kirim ulang?"
+      :message="`Kirim ulang pesan ke ${retryTarget?.phone}? Penerima akan dicoba lagi dari awal.`"
+      confirm-label="Ya, coba lagi"
+      :loading="acting"
+      @cancel="retryTarget = null"
+      @confirm="doRetryRecipient"
     />
   </div>
 </template>
