@@ -104,13 +104,14 @@ onMounted(async () => {
       </nav>
 
       <div class="sidebar-foot">
-        <div class="user-row">
+        <div class="user-chip">
           <span class="user-avatar">{{ (user?.username || 'P').slice(0, 1).toUpperCase() }}</span>
           <span class="user-name">{{ user?.username || 'Pengguna' }}</span>
+          <button @click="logout" class="logout-btn" title="Keluar">
+            <Icon name="logout" :size="14" />
+            <span>Keluar</span>
+          </button>
         </div>
-        <button @click="logout" class="btn-tertiary logout-btn">
-          <Icon name="logout" :size="15" /> Keluar
-        </button>
         <div v-if="backendVersion" class="backend-ver" :title="'Versi backend yang sedang berjalan'">
           backend {{ backendVersion }}
         </div>
@@ -224,6 +225,22 @@ onMounted(async () => {
   padding: 12px 12px 16px;
 }
 .user-row { display: flex; align-items: center; gap: 10px; padding: 4px 8px 10px; }
+.user-chip {
+  display: flex; align-items: center; gap: 10px;
+  padding: 6px 8px;
+  border-radius: var(--radius-control);
+}
+.user-chip:hover { background: var(--raised); }
+.user-chip .user-name { flex: 1; min-width: 0; }
+.logout-btn {
+  display: inline-flex; align-items: center; gap: 6px; flex: none;
+  background: transparent; border: 0; cursor: pointer;
+  color: var(--muted); font-size: 13px; font-weight: 500;
+  padding: 6px 8px; border-radius: var(--radius-control);
+  white-space: nowrap;
+}
+.logout-btn:hover { color: var(--negative); background: var(--pill-negative-bg); }
+.logout-btn svg { flex: none; display: block; }
 .backend-ver {
   margin-top: 8px; padding: 0 8px;
   font-size: 11px; color: var(--faint);
@@ -235,7 +252,7 @@ onMounted(async () => {
   font-size: 13px; font-weight: 600; flex: none;
 }
 .user-name { font-size: 14px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.logout-btn { margin-left: 4px; }
+
 
 /* ---- Kolom kanan ---- */
 .main-col { flex: 1; min-width: 0; display: flex; flex-direction: column; }
