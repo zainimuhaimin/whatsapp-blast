@@ -549,9 +549,13 @@ async function next() {
       const res = await campaignsApi.buildRecipients(campaign.value.id, ids)
       const built = res.built ?? res.count ?? res.total ?? ids.length
       const existing = existingRecipients.value
+      const skippedNoData = res.skipped_no_data || 0
+      const noDataNote = skippedNoData
+        ? ` ${skippedNoData} nomor test dilewati (tidak ada datanya dari AI/mapping).`
+        : ''
       toast.success(
         form.value.is_test_mode
-          ? `Penerima mode test dibangun (${testNums.value.length} nomor test).`
+          ? `Penerima mode test dibangun (${testNums.value.length} nomor test).${noDataNote}`
           : existing > 0 && built === 0
             ? `${existing} penerima sudah ada dari langkah sebelumnya. Lanjut ke Review.`
             : `${built} penerima ditambahkan (blacklist & duplikat otomatis dilewati).`

@@ -172,6 +172,7 @@ class RecipientsBuildResponse(BaseModel):
     added: int
     skipped_blacklisted: int
     skipped_duplicate: int
+    skipped_no_data: int = 0
     total: int
 
 

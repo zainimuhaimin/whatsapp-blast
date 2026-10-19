@@ -86,6 +86,21 @@ def dispatch_campaign(self, campaign_id: str):
 
             values = campaign_service.resolve_values(db, campaign, recipient)
 
+            # Pengaman: nomor yang tidak punya data sama sekali (tidak masuk
+            # dari input AI, tidak ter-resolve via mapping/kontak) dilewati —
+            # jangan kirim pesan kosong yang bikin error.
+            template_vars = version.variables or []
+            if template_vars and not any(
+                (values.get(v) or "").strip() for v in template_vars
+            ):
+                recipient.status = "skipped"
+                recipient.last_error = (
+                    "dilewati: tidak ada nilai variabel untuk nomor ini "
+                    "(tidak dari input AI / mapping)"
+                )
+                db.commit()
+                continue
+
             # Token bucket: bila habis, jadwalkan ulang task 60 dtk kemudian
             if not rate_limiter.acquire(redis_client, bucket_key, rate_limit):
                 log.info("dispatch_campaign: rate limit habis, dijadwalkan ulang")

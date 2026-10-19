@@ -548,7 +548,7 @@ def build_recipients(campaign_id: UUID, payload: RecipientsBuildRequest,
         .all()
     }
 
-    added = skipped_blacklisted = skipped_duplicate = 0
+    added = skipped_blacklisted = skipped_duplicate = skipped_no_data = 0
 
     def _add(phone: str, contact_id: UUID | None):
         nonlocal added, skipped_duplicate
@@ -562,7 +562,18 @@ def build_recipients(campaign_id: UUID, payload: RecipientsBuildRequest,
 
     if campaign.is_test_mode:
         numbers = db.query(TestNumber).filter(TestNumber.is_active == True).all()
+        # Nomor test yang tidak punya data sama sekali (tidak masuk dari input
+        # AI, tidak bisa di-resolve via mapping) tidak dibawa — agar tidak
+        # menimbulkan pesan kosong / error saat kirim.
+        template_vars = campaign.template_version.variables or []
+        prospective = campaign_service._prospective_test_values(db, campaign)
+        no_data_at_all = bool(template_vars) and not any(
+            (prospective.get(v) or "").strip() for v in template_vars
+        )
         for tn in numbers:
+            if tn.phone not in existing_phones and no_data_at_all:
+                skipped_no_data += 1
+                continue
             _add(tn.phone, None)
     else:
         for cid in payload.contact_ids:
@@ -578,12 +589,14 @@ def build_recipients(campaign_id: UUID, payload: RecipientsBuildRequest,
     write_audit(db, "campaign.recipients_build", user_id=user.id, entity_type="campaign",
                 entity_id=str(campaign.id),
                 metadata={"added": added, "skipped_blacklisted": skipped_blacklisted,
-                          "skipped_duplicate": skipped_duplicate, "total": total,
+                          "skipped_duplicate": skipped_duplicate,
+                          "skipped_no_data": skipped_no_data, "total": total,
                           "is_test_mode": campaign.is_test_mode},
                 ip_address=_ip(request))
     return RecipientsBuildResponse(added=added,
                                    skipped_blacklisted=skipped_blacklisted,
                                    skipped_duplicate=skipped_duplicate,
+                                   skipped_no_data=skipped_no_data,
                                    total=total)
 
 

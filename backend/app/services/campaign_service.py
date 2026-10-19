@@ -101,6 +101,37 @@ def render_for_recipient(db: Session, campaign: Campaign, recipient: CampaignRec
     return renderer.render(version.body, resolve_values(db, campaign, recipient))
 
 
+def _ai_filled_vars(db: Session, campaign_id: UUID) -> set[str]:
+    """Nama variabel yang terisi dari override per-penerima (hasil AI langkah 3)."""
+    return {
+        row[0]
+        for row in (
+            db.query(CampaignRecipientVariable.variable_name)
+            .join(
+                CampaignRecipient,
+                CampaignRecipientVariable.recipient_id == CampaignRecipient.id,
+            )
+            .filter(CampaignRecipient.campaign_id == campaign_id)
+            .distinct()
+            .all()
+        )
+    }
+
+
+def _prospective_test_values(db: Session, campaign: Campaign) -> dict[str, str]:
+    """
+    Nilai variabel untuk nomor test BARU (tanpa kontak, tanpa override):
+    hanya mapping sumber 'campaign' yang bisa memberi nilai.
+    Dipakai saat build recipients mode test untuk melewati nomor yang
+    tidak akan punya data sama sekali.
+    """
+    mappings = get_mappings(db, campaign.id)
+    return {
+        name: (m.value or "" if m.source == "campaign" else "")
+        for name, m in mappings.items()
+    }
+
+
 def recipient_count(db: Session, campaign_id: UUID) -> int:
     return (
         db.query(func.count(CampaignRecipient.id))
@@ -121,6 +152,8 @@ def validate_confirm(db: Session, campaign: Campaign) -> list[str]:
     errors: list[str] = []
     version: TemplateVersion = campaign.template_version
     mappings = get_mappings(db, campaign.id)
+    # Variabel yang sudah terisi AI per penerima dianggap sudah dipetakan
+    ai_filled = _ai_filled_vars(db, campaign.id)
 
     # (a) approval template untuk jalur resmi
     if campaign.provider == "official" and version.approval_status != "approved":
@@ -134,12 +167,14 @@ def validate_confirm(db: Session, campaign: Campaign) -> list[str]:
     if total < 1:
         errors.append("campaign belum memiliki penerima (tambahkan via recipients)")
 
-    # (c) semua variabel ter-mapping lengkap
+    # (c) semua variabel ter-mapping lengkap (atau terisi AI per penerima)
     for var in version.variables:
         m = mappings.get(var)
-        if m is None:
+        if m is None and var not in ai_filled:
             errors.append(f"variabel '{{{{{var}}}}}' belum dipetakan")
             continue
+        if m is None:
+            continue  # terisi AI per penerima — tidak perlu validasi mapping
         if m.source == "contact" and not m.contact_field:
             errors.append(f"variabel '{{{{{var}}}}}' sumber kontak tapi field belum dipilih")
         elif m.source == "campaign" and not (m.value or "").strip():
@@ -202,19 +237,7 @@ def build_review(db: Session, campaign: Campaign) -> dict:
     # Variabel yang terisi dari override per-penerima (hasil AI di langkah 3)
     # tidak punya baris mapping — tandai sumbernya "ai" agar review tidak crash
     # (source None gagal validasi skema MappingOut).
-    ai_filled_vars = {
-        row[0]
-        for row in (
-            db.query(CampaignRecipientVariable.variable_name)
-            .join(
-                CampaignRecipient,
-                CampaignRecipientVariable.recipient_id == CampaignRecipient.id,
-            )
-            .filter(CampaignRecipient.campaign_id == campaign.id)
-            .distinct()
-            .all()
-        )
-    }
+    ai_filled_vars = _ai_filled_vars(db, campaign.id)
 
     variables_rows = []
     for var in version.variables:
