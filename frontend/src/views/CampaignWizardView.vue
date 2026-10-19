@@ -217,7 +217,12 @@ async function initMappings() {
     const map = {}
     for (const v of rv.variables || []) map[v.variable_name] = v
     recipientVars.value = map
-  } catch { recipientVars.value = {} }
+    recipientVarsError.value = false
+  } catch {
+    recipientVars.value = {}
+    // Jangan diam-diam fallback ke mapping manual: tandai agar UI menampilkan peringatan
+    recipientVarsError.value = true
+  }
   const byName = Object.fromEntries(existing.map((m) => [m.variable_name, m]))
   mappings.value = selectedVariables.value.map((varName) => {
     const prev = byName[varName]
@@ -241,6 +246,7 @@ async function initMappings() {
 
 /* Nilai per-penerima hasil AI (override): {variable_name: {recipient_count, entries}} */
 const recipientVars = ref({})
+const recipientVarsError = ref(false)
 const aiFilledCount = (varName) => recipientVars.value[varName]?.recipient_count || 0
 
 /* Edit inline nilai per-penerima */
@@ -940,6 +946,13 @@ onMounted(async () => {
       </div>
 
       <div v-if="!mappings.length" class="empty-inline">Memuat variabel…</div>
+
+      <div v-if="recipientVarsError" class="alert-warning">
+        <Icon name="alert" :size="15" class="mt-0.5 shrink-0" />
+        <span>Gagal memuat nilai AI per penerima dari server — kemungkinan <b>backend belum di-update</b>.
+        Jalankan <span class="mono">git pull</span> lalu <span class="mono">docker compose up -d --build</span>,
+        kemudian ulangi langkah ini. Selama backend lama, mapping harus diisi manual.</span>
+      </div>
 
       <div v-for="m in mappings" :key="m.variable_name" class="mapping-card">
         <div class="mono font-semibold" style="color: var(--accent-ink)">{{ wrapVar(m.variable_name) }}</div>
