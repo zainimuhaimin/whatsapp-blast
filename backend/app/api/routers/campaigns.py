@@ -387,6 +387,8 @@ def get_campaign(campaign_id: UUID, db: Session = Depends(get_db),
         "variables": version.variables,
         "approval_status": version.approval_status,
         "provider_category": version.provider_category,
+        "template_id": str(version.template_id),
+        "template_name": version.template.name if version.template else None,
     }
     return out
 

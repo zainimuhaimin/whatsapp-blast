@@ -9,6 +9,7 @@ import {
 } from '../utils/format'
 import StatusPill from '../components/StatusPill.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
+import EmptyState from '../components/EmptyState.vue'
 import Icon from '../components/Icon.vue'
 
 const router = useRouter()
@@ -17,11 +18,8 @@ const toast = useToast()
 
 const STEPS = [
   { n: 1, label: 'Info Dasar' },
-  { n: 2, label: 'Template' },
-  { n: 3, label: 'Input AI' },
-  { n: 4, label: 'Mapping' },
-  { n: 5, label: 'Penerima' },
-  { n: 6, label: 'Review' },
+  { n: 2, label: 'Pesan & Data' },
+  { n: 3, label: 'Review & Kirim' },
 ]
 
 const step = ref(1)
@@ -72,8 +70,18 @@ async function toggleTemplate(t) {
   }
 }
 
-function pickVersion(t, v) {
+async function pickVersion(t, v) {
+  const changed = selectedVersion.value?.version?.id !== v.id
   selectedVersion.value = { template: t, version: v }
+  if (changed) {
+    mappings.value = [] // reset mapping untuk variabel versi baru
+    await initMappingsIfNeeded()
+    if (campaign.value) {
+      try {
+        await campaignsApi.update(campaign.value.id, { template_version_id: v.id })
+      } catch { /* abaikan, update menyusul saat lanjut */ }
+    }
+  }
 }
 
 const selectedVariables = computed(() =>
@@ -90,6 +98,15 @@ const showMsgEdit = ref(false)
 const msgEdit = ref('')
 const msgEditRef = ref(null)
 const msgSaving = ref(false)
+// Mode pesan: 'template' (pilih dari daftar) atau 'free' (tulis bebas -> jadi template baru)
+const msgMode = ref('template')
+const freeMsg = ref('')
+const freeMsgRef = ref(null)
+const creatingTemplate = ref(false)
+const freeMsgVars = computed(() => extractVariables(freeMsg.value || ''))
+// Preview inline di langkah 2
+const composePreview = ref(null)
+const composePreviewLoading = ref(false)
 const msgEditVars = computed(() => extractVariables(msgEdit.value || ''))
 const msgEditChips = computed(() => {
   const seen = []
@@ -126,7 +143,7 @@ async function saveMsgEdit() {
     toast.error('Isi pesan tidak boleh kosong.')
     return
   }
-  if (!campaign.value) return
+  if (!(await ensureCampaignOrWarn())) return
   msgSaving.value = true
   try {
     const res = await campaignsApi.updateMessageBody(campaign.value.id, msgEdit.value)
@@ -147,11 +164,89 @@ async function saveMsgEdit() {
         body: msgEdit.value,
       }
     }
-    mappings.value = [] // paksa rebuild mapping di langkah 4
+    mappings.value = [] // paksa rebuild mapping di bagian Variabel
     showMsgEdit.value = false
     toast.success(`Pesan disimpan sebagai versi ${res.version_number}.`)
   } finally {
     msgSaving.value = false
+  }
+}
+
+// --- Pesan bebas -> jadi template baru ---
+function insertFreeVar(v) {
+  const tag = wrapVar(v)
+  const el = freeMsgRef.value
+  if (!el) {
+    freeMsg.value += tag
+    return
+  }
+  const start = el.selectionStart ?? freeMsg.value.length
+  const end = el.selectionEnd ?? start
+  freeMsg.value = freeMsg.value.slice(0, start) + tag + freeMsg.value.slice(end)
+  nextTick(() => {
+    el.focus()
+    el.selectionStart = el.selectionEnd = start + tag.length
+  })
+}
+
+async function createFreeTemplate() {
+  const body = freeMsg.value.trim()
+  if (!body) {
+    toast.error('Tulis pesan dulu.')
+    return
+  }
+  creatingTemplate.value = true
+  try {
+    const d = new Date()
+    const name = `Pesan bebas ${d.toLocaleDateString('id-ID', { day: '2-digit', month: 'short' })} ${d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}`
+    const t = await templatesApi.create({ name, body })
+    await loadTemplates()
+    const v = t.latest_version
+    selectedVersion.value = {
+      template: { id: t.id, name: t.name },
+      version: { id: v.id, version_number: v.version_number, variables: v.variables, body: v.body, approval_status: v.approval_status, provider_category: v.provider_category },
+    }
+    mappings.value = [] // reset mapping untuk variabel baru
+    msgMode.value = 'template'
+    toast.success(`Template "${name}" dibuat & dipilih.`)
+  } catch (e) {
+    toast.error(e?.response?.data?.detail || 'Gagal membuat template.')
+  } finally {
+    creatingTemplate.value = false
+  }
+}
+
+// --- Campaign dibuat lazy (butuh template dulu) ---
+async function ensureCampaignOrWarn() {
+  if (!selectedVersion.value) {
+    toast.error('Pilih template atau buat pesan bebas dulu di bagian Pesan.')
+    return false
+  }
+  await ensureCampaign()
+  return true
+}
+
+// --- Siapkan review: simpan mapping + bangun penerima + muat review ---
+async function prepareForReview() {
+  if (!(await ensureCampaignOrWarn())) return false
+  await initMappingsIfNeeded()
+  const manual = mappings.value.filter((m) => aiFilledCount(m.variable_name) === 0)
+  await campaignsApi.saveMappings(campaign.value.id, manual)
+  const ids = form.value.is_test_mode ? [] : [...selectedContacts.value]
+  const res = await campaignsApi.buildRecipients(campaign.value.id, ids)
+  const built = res.built ?? res.count ?? res.total ?? ids.length
+  existingRecipients.value += built
+  await loadReview()
+  return true
+}
+
+async function doComposePreview() {
+  composePreviewLoading.value = true
+  try {
+    const ok = await prepareForReview()
+    if (ok) composePreview.value = rv.value
+  } finally {
+    composePreviewLoading.value = false
   }
 }
 
@@ -211,7 +306,7 @@ async function doFilePreview() {
 }
 
 async function doFileApply() {
-  if (!campaign.value) return
+  if (!(await ensureCampaignOrWarn())) return
   if (!filePhoneVar.value) {
     toast.error('Pilih kolom nomor telepon.')
     return
@@ -245,7 +340,7 @@ async function runAiExtract() {
     toast.warning('Isi dulu teks bebas sebelum mengekstrak dengan AI.')
     return
   }
-  if (!campaign.value) return
+  if (!(await ensureCampaignOrWarn())) return
   aiLoading.value = true
   aiResult.value = null
   aiNote.value = ''
@@ -253,12 +348,12 @@ async function runAiExtract() {
     const data = await campaignsApi.aiExtract(campaign.value.id, aiText.value.trim())
     aiResult.value = data.values || data.candidates || data.variables || data.mapping || {}
     if (data.ai_available === false || data.note) {
-      aiNote.value = data.note || 'Layanan AI tidak tersedia saat ini. Anda tetap bisa mengisi nilai variabel secara manual di langkah 4.'
+      aiNote.value = data.note || 'Layanan AI tidak tersedia saat ini. Anda tetap bisa mengisi nilai variabel secara manual di bagian Variabel di bawah.'
     }
     const n = Object.keys(aiResult.value || {}).length
-    toast.success(n ? `AI mengekstrak ${n} nilai variabel.` : 'AI tidak menemukan nilai yang cocok. Isi manual di langkah 4.')
+    toast.success(n ? `AI mengekstrak ${n} nilai variabel.` : 'AI tidak menemukan nilai yang cocok. Isi manual di bagian Variabel di bawah.')
   } catch (e) {
-    aiNote.value = 'Layanan AI tidak tersedia saat ini. Anda tetap bisa mengisi nilai variabel secara manual di langkah 4.'
+    aiNote.value = 'Layanan AI tidak tersedia saat ini. Anda tetap bisa mengisi nilai variabel secara manual di bagian Variabel di bawah.'
   } finally {
     aiLoading.value = false
   }
@@ -277,7 +372,7 @@ async function runAiParseRecipients() {
     toast.warning('Tempel dulu daftar penerima sebelum diproses AI.')
     return
   }
-  if (!campaign.value) return
+  if (!(await ensureCampaignOrWarn())) return
   aiRecLoading.value = true
   aiRecItems.value = []
   aiRecNote.value = ''
@@ -324,7 +419,7 @@ async function applyAiRecipients() {
     toast.warning('Tidak ada baris penerima untuk disimpan.')
     return
   }
-  if (!campaign.value) return
+  if (!(await ensureCampaignOrWarn())) return
   aiRecApplying.value = true
   try {
     const data = await campaignsApi.aiApplyRecipients(
@@ -642,18 +737,15 @@ function validateStep(n) {
     if (!form.value.name.trim()) errs.push('Nama campaign wajib diisi.')
   }
   if (n === 2) {
-    if (!selectedVersion.value) errs.push('Pilih salah satu versi template.')
-  }
-  if (n === 4) {
+    if (!selectedVersion.value) errs.push('Pilih template atau buat pesan bebas di bagian Pesan.')
     errs.push(...mappingErrors.value)
-  }
-  if (n === 5 && !form.value.is_test_mode) {
-    if (selectedContacts.value.size === 0 && existingRecipients.value === 0) {
-      errs.push('Pilih minimal satu penerima.')
+    if (!form.value.is_test_mode) {
+      if (selectedContacts.value.size === 0 && existingRecipients.value === 0) {
+        errs.push('Tambahkan minimal satu penerima (via AI / file / pilih kontak).')
+      }
+    } else if (!testNums.value.length) {
+      errs.push('Mode test aktif tetapi tidak ada nomor test yang aktif. Tambahkan di menu Nomor Test.')
     }
-  }
-  if (n === 5 && form.value.is_test_mode) {
-    if (!testNums.value.length) errs.push('Mode test aktif tetapi tidak ada nomor test yang aktif. Tambahkan di menu Nomor Test.')
   }
   return errs
 }
@@ -686,37 +778,23 @@ async function next() {
   loading.value = true
   try {
     if (step.value === 2) {
-      await ensureCampaign()
+      // Langkah gabungan: pastikan campaign, simpan mapping, bangun penerima, muat review
+      const ok = await prepareForReview()
+      if (!ok) return
+      const skippedNoData = rv.value?.skipped_no_data || 0
+      if (skippedNoData) {
+        toast.warning(`${skippedNoData} nomor test dilewati (tidak ada datanya).`)
+      }
     }
-    if (step.value === 4) {
-      await initMappingsIfNeeded()
-      // Variabel yang sudah terisi AI per penerima tidak perlu mapping manual
-      const manual = mappings.value.filter((m) => aiFilledCount(m.variable_name) === 0)
-      await campaignsApi.saveMappings(campaign.value.id, manual)
-      toast.success('Mapping variabel disimpan.')
-    }
-    if (step.value === 5) {
-      const ids = form.value.is_test_mode ? [] : [...selectedContacts.value]
-      const res = await campaignsApi.buildRecipients(campaign.value.id, ids)
-      const built = res.built ?? res.count ?? res.total ?? ids.length
-      const existing = existingRecipients.value
-      const skippedNoData = res.skipped_no_data || 0
-      const noDataNote = skippedNoData
-        ? ` ${skippedNoData} nomor test dilewati (tidak ada datanya dari AI/mapping).`
-        : ''
-      toast.success(
-        form.value.is_test_mode
-          ? `Penerima mode test dibangun (${testNums.value.length} nomor test).${noDataNote}`
-          : existing > 0 && built === 0
-            ? `${existing} penerima sudah ada dari langkah sebelumnya. Lanjut ke Review.`
-            : `${built} penerima ditambahkan (blacklist & duplikat otomatis dilewati).`
-      )
-    }
-    if (step.value < 6) {
+    if (step.value < 3) {
       step.value += 1
-      if (step.value === 4) await initMappings()
-      if (step.value === 5) await loadRecipientsData()
-      if (step.value === 6) await loadReview()
+      if (step.value === 2) {
+        // Masuk langkah gabungan: muat nomor test/kontak; siapkan mapping bila template sudah dipilih
+        await loadRecipientsData()
+        if (campaign.value && selectedVersion.value) {
+          await initMappingsIfNeeded()
+        }
+      }
       window.scrollTo({ top: 0 })
     }
   } finally {
@@ -737,7 +815,7 @@ function back() {
 
 function goTo(n) {
   // Lompat ke langkah sebelumnya bebas; ke depan hanya bila sudah ada campaign
-  if (n < step.value || (campaign.value && n <= 6)) {
+  if (n < step.value || (campaign.value && n <= 3)) {
     step.value = n
     window.scrollTo({ top: 0 })
   }
@@ -788,10 +866,22 @@ onMounted(async () => {
       form.value.provider = c.provider || 'official'
       form.value.is_test_mode = !!c.is_test_mode
       form.value.send_at = c.send_at ? new Date(c.send_at).toISOString().slice(0, 16) : ''
+      // Pulihkan template terpilih agar tidak perlu pilih ulang
+      const tv = c.template_version
+      if (tv?.id) {
+        selectedVersion.value = {
+          template: { id: tv.template_id, name: tv.template_name || 'Template' },
+          version: {
+            id: tv.id, version_number: tv.version_number, body: tv.body,
+            variables: tv.variables || [], approval_status: tv.approval_status,
+            provider_category: tv.provider_category,
+          },
+        }
+      }
       // Lompat ke langkah tertentu (mis. dari Blast File langsung ke review)
       const targetStep = parseInt(route.query.step || '0', 10)
-      if (targetStep === 6) {
-        step.value = 6
+      if (targetStep === 6 || targetStep === 3) {
+        step.value = 3
         await loadReview()
       }
     } catch { /* abaikan, mulai wizard baru */ }
@@ -803,7 +893,7 @@ onMounted(async () => {
   <div class="wizard">
     <div class="mb-6">
       <h1 class="page-title">Campaign Baru</h1>
-      <p class="page-sub">6 langkah: info, template, AI, mapping, penerima, review</p>
+      <p class="page-sub">3 langkah: info dasar, pesan & data, review & kirim</p>
     </div>
 
     <!-- Step indicator: ticks ala WhatsApp untuk langkah selesai -->
@@ -933,498 +1023,568 @@ onMounted(async () => {
       </div>
     </section>
 
-    <!-- ================= LANGKAH 2: TEMPLATE ================= -->
-    <section v-if="step === 2" class="form-grid">
-      <div class="card card-pad">
-        <h2 class="section-title mb-1">2. Pilih versi template</h2>
-        <p class="card-label mb-4">Versi yang dipilih di-pin ke campaign (tidak berubah walau template diedit).</p>
-
-        <div v-if="!templates.length" class="empty-inline">
-          Belum ada template. <RouterLink to="/templates" class="row-link">Buat template dulu</RouterLink>.
-        </div>
-
-        <div v-for="t in templates" :key="t.id" class="tpl-group">
-          <button @click="toggleTemplate(t)" class="tpl-head">
-            <Icon :name="expandedTemplate?.id === t.id ? 'chevron-down' : 'chevron-right'" :size="15" class="shrink-0" />
-            <span class="font-medium">{{ t.name }}</span>
-            <span v-if="t.description" class="card-label truncate">{{ truncate(t.description, 60) }}</span>
-          </button>
-          <div v-if="expandedTemplate?.id === t.id" class="tpl-versions">
-            <div v-if="versionsLoading" class="card-label">Memuat versi…</div>
-            <label
-              v-for="v in (versionsCache[t.id] || [])"
-              :key="v.id || v.version_number"
-              class="version-card"
-              :class="{ selected: selectedVersion?.version?.id === v.id }"
-            >
-              <div class="version-head">
-                <input
-                  type="radio"
-                  :checked="selectedVersion?.version?.id === v.id"
-                  @change="pickVersion(t, v)"
-                  class="radio-accent"
-                />
-                <span class="font-semibold text-sm">Versi {{ v.version_number }}</span>
-                <StatusPill :status="v.approval_status || 'draft'" />
-                <span v-if="v.provider_category" class="pill pill-neutral">{{ v.provider_category }}</span>
-                <span class="card-label ml-auto">{{ (v.variables || []).length }} variabel</span>
-              </div>
-              <pre class="version-body">{{ truncate(v.body, 220) }}</pre>
-              <div
-                v-if="form.provider === 'official' && (v.approval_status || 'draft') !== 'approved'"
-                class="alert-negative mt-2"
-              >
-                <Icon name="alert" :size="14" class="mt-0.5 shrink-0" />
-                <span>Jalur resmi mewajibkan template berstatus <b>approved</b> oleh Meta. Versi ini belum bisa dipakai blast produksi.</span>
-              </div>
-            </label>
+    <!-- ================= LANGKAH 2: PESAN & DATA (gabungan) ================= -->
+    <section v-if="step === 2" class="compose">
+      <!-- 2A: Pesan -->
+      <div class="card card-pad mb-4">
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-1">
+          <h2 class="section-title">Pesan</h2>
+          <div class="seg-toggle" role="tablist">
+            <button :class="['seg-btn', { active: msgMode === 'template' }]" @click="msgMode = 'template'">
+              <Icon name="chat" :size="14" /> Pilih Template
+            </button>
+            <button :class="['seg-btn', { active: msgMode === 'free' }]" @click="msgMode = 'free'">
+              <Icon name="pencil" :size="14" /> Tulis Bebas
+            </button>
           </div>
         </div>
+        <p class="card-label mb-4">Pilih template yang sudah ada, atau tulis pesan bebas — variabel otomatis terisi dari AI maupun file.</p>
+        <div v-if="msgMode === 'template'">
+                  <p class="card-label mb-4">Versi yang dipilih di-pin ke campaign (tidak berubah walau template diedit).</p>
 
-        <div v-if="selectedVersion" class="alert-positive mt-4">
-          <Icon name="check" :size="15" class="mt-0.5 shrink-0" />
-          <div class="text-sm">
-            Terpilih: <b>{{ selectedVersion.template.name }}</b> — versi {{ selectedVersion.version.version_number }}
-            <span class="card-label">({{ selectedVariables.length }} variabel: {{ selectedVariables.map(v => wrapVar(v)).join(', ') || '–' }})</span>
-          </div>
+                  <div v-if="!templates.length" class="empty-inline">
+                    Belum ada template. <RouterLink to="/templates" class="row-link">Buat template dulu</RouterLink>.
+                  </div>
+
+                  <div v-for="t in templates" :key="t.id" class="tpl-group">
+                    <button @click="toggleTemplate(t)" class="tpl-head">
+                      <Icon :name="expandedTemplate?.id === t.id ? 'chevron-down' : 'chevron-right'" :size="15" class="shrink-0" />
+                      <span class="font-medium">{{ t.name }}</span>
+                      <span v-if="t.description" class="card-label truncate">{{ truncate(t.description, 60) }}</span>
+                    </button>
+                    <div v-if="expandedTemplate?.id === t.id" class="tpl-versions">
+                      <div v-if="versionsLoading" class="card-label">Memuat versi…</div>
+                      <label
+                        v-for="v in (versionsCache[t.id] || [])"
+                        :key="v.id || v.version_number"
+                        class="version-card"
+                        :class="{ selected: selectedVersion?.version?.id === v.id }"
+                      >
+                        <div class="version-head">
+                          <input
+                            type="radio"
+                            :checked="selectedVersion?.version?.id === v.id"
+                            @change="pickVersion(t, v)"
+                            class="radio-accent"
+                          />
+                          <span class="font-semibold text-sm">Versi {{ v.version_number }}</span>
+                          <StatusPill :status="v.approval_status || 'draft'" />
+                          <span v-if="v.provider_category" class="pill pill-neutral">{{ v.provider_category }}</span>
+                          <span class="card-label ml-auto">{{ (v.variables || []).length }} variabel</span>
+                        </div>
+                        <pre class="version-body">{{ truncate(v.body, 220) }}</pre>
+                        <div
+                          v-if="form.provider === 'official' && (v.approval_status || 'draft') !== 'approved'"
+                          class="alert-negative mt-2"
+                        >
+                          <Icon name="alert" :size="14" class="mt-0.5 shrink-0" />
+                          <span>Jalur resmi mewajibkan template berstatus <b>approved</b> oleh Meta. Versi ini belum bisa dipakai blast produksi.</span>
+                        </div>
+                      </label>
+                    </div>
+                  </div>
+
+                  <div v-if="selectedVersion" class="alert-positive mt-4">
+                    <Icon name="check" :size="15" class="mt-0.5 shrink-0" />
+                    <div class="text-sm">
+                      Terpilih: <b>{{ selectedVersion.template.name }}</b> — versi {{ selectedVersion.version.version_number }}
+                      <span class="card-label">({{ selectedVariables.length }} variabel: {{ selectedVariables.map(v => wrapVar(v)).join(', ') || '–' }})</span>
+                    </div>
+                  </div>
+                <!-- Ubah pesan: fleksibel seperti Blast dari File -->
+                <div v-if="selectedVersion" class="msg-edit-card">
+                  <button @click="showMsgEdit ? (showMsgEdit = false) : openMsgEdit()" class="msg-edit-toggle" type="button">
+                    <Icon name="pencil" :size="14" />
+                    {{ showMsgEdit ? 'Tutup editor pesan' : 'Ubah pesan (fleksibel)' }}
+                  </button>
+                  <p class="card-label mt-1">Pesan tidak harus terpaku template — ubah teksnya di sini, variabel tetap bisa dipakai.</p>
+                  <div v-if="showMsgEdit" class="mt-3">
+                    <div class="chip-row mb-2">
+                      <span class="card-label">Klik untuk tempel di kursor:</span>
+                      <button
+                        v-for="v in msgEditChips"
+                        :key="v"
+                        @click="insertMsgVar(v)"
+                        class="chip-var chip-click mono"
+                        type="button"
+                      >
+                        {{ wrapVar(v) }}
+                      </button>
+                    </div>
+                    <textarea
+                      ref="msgEditRef"
+                      v-model="msgEdit"
+                      rows="6"
+                      class="field-input"
+                      placeholder="Tulis pesan…"
+                    />
+                    <div class="mt-2">
+                      <button @click="saveMsgEdit" :disabled="msgSaving" class="btn btn-accent text-sm" type="button">
+                        <Icon name="check" :size="14" /> {{ msgSaving ? 'Menyimpan…' : 'Simpan sebagai versi baru' }}
+                      </button>
+                    </div>
+                    <p class="card-label mt-2">
+                      Menyimpan membuat <b>versi template baru</b> khusus campaign ini — template aslinya tidak berubah,
+                      mapping yang sudah ada ikut terbawa.
+                    </p>
+                  </div>
+                </div>
         </div>
-      </div>
-    </section>
-
-    <!-- ================= LANGKAH 3: INPUT DATA ================= -->
-    <section v-if="step === 3" class="card card-pad form-grid">
-      <div>
-        <h2 class="section-title">3. Input data</h2>
-        <div class="seg-toggle mt-2" role="tablist">
-          <button :class="['seg-btn', { active: aiMode === 'recipients' }]" @click="aiMode = 'recipients'">
-            <Icon name="users" :size="14" /> AI — Daftar penerima
-          </button>
-          <button :class="['seg-btn', { active: aiMode === 'general' }]" @click="aiMode = 'general'">
-            <Icon name="zap" :size="14" /> AI — Nilai umum
-          </button>
-          <button :class="['seg-btn', { active: aiMode === 'file' }]" @click="aiMode = 'file'">
-            <Icon name="upload" :size="14" /> Upload file
-          </button>
-        </div>
-      </div>
-
-      <!-- Ubah pesan: fleksibel seperti Blast dari File -->
-      <div v-if="selectedVersion" class="msg-edit-card">
-        <button @click="showMsgEdit ? (showMsgEdit = false) : openMsgEdit()" class="msg-edit-toggle" type="button">
-          <Icon name="pencil" :size="14" />
-          {{ showMsgEdit ? 'Tutup editor pesan' : 'Ubah pesan (fleksibel)' }}
-        </button>
-        <p class="card-label mt-1">Pesan tidak harus terpaku template — ubah teksnya di sini, variabel tetap bisa dipakai.</p>
-        <div v-if="showMsgEdit" class="mt-3">
+        <div v-else>
+          <p class="card-label mb-2">Tulis pesan bebas — variabel ditulis <span class="mono">{{nama_variabel}}</span>. Klik chip untuk menempel di posisi kursor. Pesan ini akan disimpan sebagai template baru.</p>
           <div class="chip-row mb-2">
-            <span class="card-label">Klik untuk tempel di kursor:</span>
-            <button
-              v-for="v in msgEditChips"
-              :key="v"
-              @click="insertMsgVar(v)"
-              class="chip-var chip-click mono"
-              type="button"
-            >
+            <span class="card-label">Variabel tersedia:</span>
+            <button v-for="v in msgEditChips" :key="v" @click="insertFreeVar(v)" class="chip-var chip-click mono" type="button">
               {{ wrapVar(v) }}
             </button>
+            <span v-if="!msgEditChips.length" class="card-label">Belum ada — isi data dulu di bagian Data, atau ketik manual.</span>
           </div>
-          <textarea
-            ref="msgEditRef"
-            v-model="msgEdit"
-            rows="6"
-            class="field-input"
-            placeholder="Tulis pesan…"
-          />
+          <textarea ref="freeMsgRef" v-model="freeMsg" rows="6" class="field-input" placeholder="Contoh:&#10;Halo {{nama}},&#10;&#10;Info {{info}} untuk Anda." />
           <div class="mt-2">
-            <button @click="saveMsgEdit" :disabled="msgSaving" class="btn btn-accent text-sm" type="button">
-              <Icon name="check" :size="14" /> {{ msgSaving ? 'Menyimpan…' : 'Simpan sebagai versi baru' }}
+            <button @click="createFreeTemplate" :disabled="creatingTemplate" class="btn btn-accent text-sm" type="button">
+              <Icon name="check" :size="14" /> {{ creatingTemplate ? 'Membuat…' : 'Buat template dari pesan ini' }}
             </button>
           </div>
-          <p class="card-label mt-2">
-            Menyimpan membuat <b>versi template baru</b> khusus campaign ini — template aslinya tidak berubah,
-            mapping yang sudah ada ikut terbawa.
-          </p>
+          <div v-if="freeMsgVars.length" class="card-label mt-2">Variabel terdeteksi: {{ freeMsgVars.map(v => wrapVar(v)).join(', ') }}</div>
         </div>
       </div>
 
-      <!-- ===== Mode: daftar penerima (nilai beda per orang) ===== -->
-      <template v-if="aiMode === 'recipients'">
-        <p class="card-label -mt-2">
-          Tempel daftar penerima dalam bentuk teks bebas apa pun (satu entri per baris/blok: nama, nomor HP,
-          dan data pendukungnya — AI membaca cerdas mengikuti variabel template Anda).
-          AI akan memecahnya per penerima beserta nilai variabelnya. Periksa dan edit hasilnya
-          sebelum disimpan. Satu nomor boleh muncul berkali-kali, tiap baris jadi satu pesan.
-        </p>
-
+      <!-- 2B: Data -->
+      <div class="card card-pad mb-4 form-grid">
         <div>
-          <label class="field-label">Daftar penerima (teks bebas)</label>
-          <textarea v-model="aiRecText" rows="7" class="field-input mono" placeholder="Contoh:&#10;1. POS Buol&#10;Ruben&#10;+62 877-2896-3152&#10;Jl. MA Turungku Kel. Kali Kec. Biau Kab. Buol&#10;&#10;2. POS Donggala&#10;Rivan&#10;+62 877-2896-3152&#10;Jl. Trans Sulawesi Palu - Sabang"></textarea>
-        </div>
-
-        <div>
-          <button @click="runAiParseRecipients" :disabled="aiRecLoading" class="btn btn-secondary">
-            <Icon name="users" :size="15" /> {{ aiRecLoading ? 'Menganalisis…' : 'Proses dengan AI' }}
-          </button>
-        </div>
-
-        <div v-if="aiRecNote" class="alert-warning">
-          <Icon name="alert" :size="15" class="mt-0.5 shrink-0" /> <span>{{ aiRecNote }}</span>
-        </div>
-
-        <div v-if="aiRecItems.length" class="tbl-wrap">
-          <div class="tbl-title">Hasil parse AI: periksa dan edit sebelum disimpan ({{ aiRecItems.length }} penerima)</div>
-          <div class="tbl-scroll thin-scroll">
-            <table class="tbl min-w-[720px]">
-              <thead>
-                <tr>
-                  <th class="w-10">No</th>
-                  <th>Nama</th>
-                  <th>Nomor HP</th>
-                  <th v-for="vn in selectedVariables" :key="vn" class="mono">{{ wrapVar(vn) }}</th>
-                  <th class="w-12"><span class="sr-only">Hapus</span></th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="(row, i) in aiRecItems" :key="i" :class="{ 'row-invalid': !row.phone_valid }">
-                  <td class="num">{{ i + 1 }}</td>
-                  <td><input v-model="row.name" class="field-input field-sm" placeholder="Nama" /></td>
-                  <td>
-                    <input v-model="row.phone" class="field-input field-sm mono" placeholder="+62812…" />
-                    <div v-if="!row.phone_valid && row.phone" class="field-err">Nomor tidak valid</div>
-                    <div v-else-if="row.contact_exists" class="field-hint-ok">Kontak dikenali{{ row.contact_name ? ': ' + row.contact_name : '' }}</div>
-                  </td>
-                  <td v-for="vn in selectedVariables" :key="vn">
-                    <input v-model="row.variables[vn]" class="field-input field-sm" :placeholder="wrapVar(vn)" />
-                  </td>
-                  <td class="num">
-                    <button @click="removeAiRecRow(i)" class="icon-btn is-danger" title="Hapus baris">
-                      <Icon name="trash" :size="15" />
+          <h2 class="section-title">Data Penerima</h2>
+                  <div class="seg-toggle mt-2" role="tablist">
+                    <button :class="['seg-btn', { active: aiMode === 'recipients' }]" @click="aiMode = 'recipients'">
+                      <Icon name="users" :size="14" /> AI — Daftar penerima
                     </button>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-          <div class="tbl-foot">Dengan menekan tombol di bawah, Anda <b>menyetujui hasil ekstraksi &amp; rekomendasi mapping AI</b> di atas. Baris tanpa nomor valid tidak ikut disimpan. Kontak baru otomatis dibuat; kontak lama dikenali dari nomornya.</div>
+                    <button :class="['seg-btn', { active: aiMode === 'general' }]" @click="aiMode = 'general'">
+                      <Icon name="zap" :size="14" /> AI — Nilai umum
+                    </button>
+                    <button :class="['seg-btn', { active: aiMode === 'file' }]" @click="aiMode = 'file'">
+                      <Icon name="upload" :size="14" /> Upload file
+                    </button>
+                  </div>
         </div>
 
-        <div v-if="aiRecItems.length" class="flex flex-wrap gap-2">
-          <button @click="addAiRecRow" class="btn btn-tertiary text-sm">
-            <Icon name="plus" :size="14" /> Tambah baris manual
-          </button>
-          <button @click="applyAiRecipients" :disabled="aiRecApplying" class="btn btn-accent">
-            <Icon name="check" :size="15" /> {{ aiRecApplying ? 'Menyimpan…' : `Setuju — gunakan hasil AI (${aiRecItems.filter(r => r.phone.trim()).length} penerima)` }}
-          </button>
-        </div>
+            <!-- ===== Mode: daftar penerima (nilai beda per orang) ===== -->
+            <template v-if="aiMode === 'recipients'">
+              <p class="card-label -mt-2">
+                Tempel daftar penerima dalam bentuk teks bebas apa pun (satu entri per baris/blok: nama, nomor HP,
+                dan data pendukungnya — AI membaca cerdas mengikuti variabel template Anda).
+                AI akan memecahnya per penerima beserta nilai variabelnya. Periksa dan edit hasilnya
+                sebelum disimpan. Satu nomor boleh muncul berkali-kali, tiap baris jadi satu pesan.
+              </p>
 
-        <div v-if="aiRecDone" class="alert-success">
-          <Icon name="check-double" :size="15" class="mt-0.5 shrink-0" />
-          <span>
-            {{ aiRecDone.added }} penerima ditambahkan
-            ({{ aiRecDone.created_contacts }} kontak baru, {{ aiRecDone.matched_contacts }} kontak dikenali).
-            <template v-if="aiRecDone.skipped?.length">Dilewati: {{ aiRecDone.skipped.join('; ') }}.</template>
-            Cek hasil render tiap penerima di langkah Review.
-          </span>
-        </div>
-      </template>
+              <div>
+                <label class="field-label">Daftar penerima (teks bebas)</label>
+                <textarea v-model="aiRecText" rows="7" class="field-input mono" placeholder="Contoh:&#10;1. POS Buol&#10;Ruben&#10;+62 877-2896-3152&#10;Jl. MA Turungku Kel. Kali Kec. Biau Kab. Buol&#10;&#10;2. POS Donggala&#10;Rivan&#10;+62 877-2896-3152&#10;Jl. Trans Sulawesi Palu - Sabang"></textarea>
+              </div>
 
-      <!-- ===== Mode: nilai umum (sama untuk semua penerima) ===== -->
-      <template v-else>
-        <p class="card-label -mt-2">
-          Tulis info campaign dengan bahasa bebas (mis. “Promo akhir tahun diskon 50% berlaku sampai 31 Desember, kode: HEMAT50”).
-          AI akan mengekstrak SATU nilai per variabel yang berlaku sama untuk semua penerima.
-          Hasilnya bisa Anda edit di langkah berikutnya.
-        </p>
+              <div>
+                <button @click="runAiParseRecipients" :disabled="aiRecLoading" class="btn btn-secondary">
+                  <Icon name="users" :size="15" /> {{ aiRecLoading ? 'Menganalisis…' : 'Proses dengan AI' }}
+                </button>
+              </div>
 
-        <div>
-          <label class="field-label">Teks bebas</label>
-          <textarea v-model="aiText" rows="6" class="field-input" placeholder="Contoh: Promo cuci gudang! Diskon 70% semua fashion, hanya tanggal 12-12. Gratis ongkir min. belanja 100rb."></textarea>
-        </div>
+              <div v-if="aiRecNote" class="alert-warning">
+                <Icon name="alert" :size="15" class="mt-0.5 shrink-0" /> <span>{{ aiRecNote }}</span>
+              </div>
 
-        <div>
-          <button @click="runAiExtract" :disabled="aiLoading" class="btn btn-secondary">
-            <Icon name="zap" :size="15" /> {{ aiLoading ? 'Menganalisis…' : 'Ekstrak dengan AI' }}
-          </button>
-        </div>
-
-        <div v-if="aiNote" class="alert-warning">
-          <Icon name="alert" :size="15" class="mt-0.5 shrink-0" />
-          <span>{{ aiNote }}</span>
-        </div>
-
-        <div v-if="aiResult && Object.keys(aiResult).length" class="tbl-wrap">
-          <div class="tbl-title">Hasil ekstraksi AI</div>
-          <table class="tbl">
-            <tbody>
-              <tr v-for="(val, key) in aiResult" :key="key">
-                <td class="mono w-40" style="color: var(--accent-ink); font-weight: 600">{{ wrapVar(key) }}</td>
-                <td>{{ val || '–' }}</td>
-              </tr>
-            </tbody>
-          </table>
-          <div class="tbl-foot">Nilai ini menjadi prefill di langkah Mapping dan masih bisa diubah.</div>
-        </div>
-
-        <div>
-          <button @click="step = 4; initMappings()" class="btn-tertiary text-sm">
-            Lewati, isi manual di langkah Mapping <Icon name="chevron-right" :size="14" />
-          </button>
-        </div>
-      </template>
-
-      <!-- ===== Mode: upload file (tiap baris = penerima) ===== -->
-      <template v-if="aiMode === 'file'">
-        <p class="card-label -mt-2">
-          Upload CSV/Excel — tiap baris menjadi penerima, tiap kolom menjadi nilai variabel per baris.
-          Kolom file bisa ditempel ke pesan lewat editor "Ubah pesan (fleksibel)" di atas.
-        </p>
-
-        <div v-if="!fileUpload" class="upload-drop">
-          <Icon name="upload" :size="22" class="upload-icon" />
-          <label class="btn btn-secondary">
-            {{ fileUploading ? 'Mengunggah…' : 'Pilih file CSV / Excel' }}
-            <input type="file" accept=".csv,.xlsx,.xls" class="file-hidden" :disabled="fileUploading" @change="onFilePick" />
-          </label>
-          <p class="card-label mt-2">Maks 10 MB, 5000 baris. Baris pertama dianggap header.</p>
-        </div>
-
-        <template v-else>
-          <div class="upload-meta">
-            <div>
-              <div class="font-semibold text-sm">{{ fileUpload.filename }}</div>
-              <div class="card-label">{{ fileUpload.row_count }} baris data</div>
-            </div>
-            <button @click="resetFileUpload" class="btn btn-tertiary text-sm" type="button">
-              <Icon name="x" :size="14" /> Ganti file
-            </button>
-          </div>
-
-          <div class="mt-3">
-            <div class="card-label mb-2">Kolom terdeteksi:</div>
-            <div class="chip-row">
-              <span v-for="c in fileColumns" :key="c.variable" class="chip-var mono" :title="`Header asli: ${c.header}`">
-                {{ wrapVar(c.variable) }}
-              </span>
-            </div>
-          </div>
-
-          <div class="mt-3 max-w-sm">
-            <label class="card-label" for="wf-phone-col">Kolom nomor telepon</label>
-            <select id="wf-phone-col" v-model="filePhoneVar" class="field-input mt-1">
-              <option value="" disabled>\u2014 pilih kolom \u2014</option>
-              <option v-for="c in fileColumns" :key="c.variable" :value="c.variable">
-                {{ c.header }} \u2192 {{ wrapVar(c.variable) }}
-              </option>
-            </select>
-          </div>
-
-          <div class="mt-3 flex flex-wrap gap-2">
-            <button @click="doFilePreview" :disabled="filePreviewing" class="btn btn-secondary text-sm" type="button">
-              <Icon name="eye" :size="14" /> {{ filePreviewing ? 'Memproses…' : 'Preview 5 baris' }}
-            </button>
-            <button @click="doFileApply" :disabled="fileApplying || !filePhoneVar" class="btn btn-accent text-sm" type="button">
-              <Icon name="check" :size="14" /> {{ fileApplying ? 'Menerapkan…' : 'Terapkan sebagai penerima' }}
-            </button>
-          </div>
-
-          <div v-if="filePreview" class="mt-4">
-            <div v-if="filePreview.unknown_variables?.length" class="alert-warning mb-3">
-              <Icon name="alert" :size="15" class="mt-0.5 shrink-0" />
-              <span>Variabel ini dipakai di pesan tapi <b>tidak ada</b> di file: {{ filePreview.unknown_variables.map(wrapVar).join(', ') }} \u2014 akan ter-render kosong.</span>
-            </div>
-            <div class="card-label mb-3">
-              {{ filePreview.valid_rows }} baris bernomor valid
-              <template v-if="filePreview.skipped_rows"> \u00b7 {{ filePreview.skipped_rows }} baris nomornya tidak valid (otomatis dilewati)</template>
-            </div>
-            <div class="preview-list">
-              <div v-for="p in filePreview.previews" :key="p.row" class="preview-item">
-                <div class="preview-head">
-                  <span class="font-semibold text-sm">Baris {{ p.row }}</span>
-                  <span class="mono text-xs card-label">{{ p.phone || 'nomor tidak valid' }}</span>
-                  <span v-if="!p.phone_valid" class="pill pill-negative">dilewati</span>
+              <div v-if="aiRecItems.length" class="tbl-wrap">
+                <div class="tbl-title">Hasil parse AI: periksa dan edit sebelum disimpan ({{ aiRecItems.length }} penerima)</div>
+                <div class="tbl-scroll thin-scroll">
+                  <table class="tbl min-w-[720px]">
+                    <thead>
+                      <tr>
+                        <th class="w-10">No</th>
+                        <th>Nama</th>
+                        <th>Nomor HP</th>
+                        <th v-for="vn in selectedVariables" :key="vn" class="mono">{{ wrapVar(vn) }}</th>
+                        <th class="w-12"><span class="sr-only">Hapus</span></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr v-for="(row, i) in aiRecItems" :key="i" :class="{ 'row-invalid': !row.phone_valid }">
+                        <td class="num">{{ i + 1 }}</td>
+                        <td><input v-model="row.name" class="field-input field-sm" placeholder="Nama" /></td>
+                        <td>
+                          <input v-model="row.phone" class="field-input field-sm mono" placeholder="+62812…" />
+                          <div v-if="!row.phone_valid && row.phone" class="field-err">Nomor tidak valid</div>
+                          <div v-else-if="row.contact_exists" class="field-hint-ok">Kontak dikenali{{ row.contact_name ? ': ' + row.contact_name : '' }}</div>
+                        </td>
+                        <td v-for="vn in selectedVariables" :key="vn">
+                          <input v-model="row.variables[vn]" class="field-input field-sm" :placeholder="wrapVar(vn)" />
+                        </td>
+                        <td class="num">
+                          <button @click="removeAiRecRow(i)" class="icon-btn is-danger" title="Hapus baris">
+                            <Icon name="trash" :size="15" />
+                          </button>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
                 </div>
-                <div class="sample-wa">{{ p.message }}</div>
+                <div class="tbl-foot">Dengan menekan tombol di bawah, Anda <b>menyetujui hasil ekstraksi &amp; rekomendasi mapping AI</b> di atas. Baris tanpa nomor valid tidak ikut disimpan. Kontak baru otomatis dibuat; kontak lama dikenali dari nomornya.</div>
+              </div>
+
+              <div v-if="aiRecItems.length" class="flex flex-wrap gap-2">
+                <button @click="addAiRecRow" class="btn btn-tertiary text-sm">
+                  <Icon name="plus" :size="14" /> Tambah baris manual
+                </button>
+                <button @click="applyAiRecipients" :disabled="aiRecApplying" class="btn btn-accent">
+                  <Icon name="check" :size="15" /> {{ aiRecApplying ? 'Menyimpan…' : `Setuju — gunakan hasil AI (${aiRecItems.filter(r => r.phone.trim()).length} penerima)` }}
+                </button>
+              </div>
+
+              <div v-if="aiRecDone" class="alert-success">
+                <Icon name="check-double" :size="15" class="mt-0.5 shrink-0" />
+                <span>
+                  {{ aiRecDone.added }} penerima ditambahkan
+                  ({{ aiRecDone.created_contacts }} kontak baru, {{ aiRecDone.matched_contacts }} kontak dikenali).
+                  <template v-if="aiRecDone.skipped?.length">Dilewati: {{ aiRecDone.skipped.join('; ') }}.</template>
+                  Cek hasil render tiap penerima di langkah Review.
+                </span>
+              </div>
+            </template>
+
+            <!-- ===== Mode: nilai umum (sama untuk semua penerima) ===== -->
+            <template v-else>
+              <p class="card-label -mt-2">
+                Tulis info campaign dengan bahasa bebas (mis. “Promo akhir tahun diskon 50% berlaku sampai 31 Desember, kode: HEMAT50”).
+                AI akan mengekstrak SATU nilai per variabel yang berlaku sama untuk semua penerima.
+                Hasilnya bisa Anda edit di langkah berikutnya.
+              </p>
+
+              <div>
+                <label class="field-label">Teks bebas</label>
+                <textarea v-model="aiText" rows="6" class="field-input" placeholder="Contoh: Promo cuci gudang! Diskon 70% semua fashion, hanya tanggal 12-12. Gratis ongkir min. belanja 100rb."></textarea>
+              </div>
+
+              <div>
+                <button @click="runAiExtract" :disabled="aiLoading" class="btn btn-secondary">
+                  <Icon name="zap" :size="15" /> {{ aiLoading ? 'Menganalisis…' : 'Ekstrak dengan AI' }}
+                </button>
+              </div>
+
+              <div v-if="aiNote" class="alert-warning">
+                <Icon name="alert" :size="15" class="mt-0.5 shrink-0" />
+                <span>{{ aiNote }}</span>
+              </div>
+
+              <div v-if="aiResult && Object.keys(aiResult).length" class="tbl-wrap">
+                <div class="tbl-title">Hasil ekstraksi AI</div>
+                <table class="tbl">
+                  <tbody>
+                    <tr v-for="(val, key) in aiResult" :key="key">
+                      <td class="mono w-40" style="color: var(--accent-ink); font-weight: 600">{{ wrapVar(key) }}</td>
+                      <td>{{ val || '–' }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+                <div class="tbl-foot">Nilai ini menjadi prefill di langkah Mapping dan masih bisa diubah.</div>
+              </div>
+
+              <div>
+                <button @click="step = 4; initMappings()" class="btn-tertiary text-sm">
+                  Lewati, isi manual di langkah Mapping <Icon name="chevron-right" :size="14" />
+                </button>
+              </div>
+            </template>
+
+            <!-- ===== Mode: upload file (tiap baris = penerima) ===== -->
+            <template v-if="aiMode === 'file'">
+              <p class="card-label -mt-2">
+                Upload CSV/Excel — tiap baris menjadi penerima, tiap kolom menjadi nilai variabel per baris.
+                Kolom file bisa ditempel ke pesan lewat editor "Ubah pesan (fleksibel)" di atas.
+              </p>
+
+              <div v-if="!fileUpload" class="upload-drop">
+                <Icon name="upload" :size="22" class="upload-icon" />
+                <label class="btn btn-secondary">
+                  {{ fileUploading ? 'Mengunggah…' : 'Pilih file CSV / Excel' }}
+                  <input type="file" accept=".csv,.xlsx,.xls" class="file-hidden" :disabled="fileUploading" @change="onFilePick" />
+                </label>
+                <p class="card-label mt-2">Maks 10 MB, 5000 baris. Baris pertama dianggap header.</p>
+              </div>
+
+              <template v-else>
+                <div class="upload-meta">
+                  <div>
+                    <div class="font-semibold text-sm">{{ fileUpload.filename }}</div>
+                    <div class="card-label">{{ fileUpload.row_count }} baris data</div>
+                  </div>
+                  <button @click="resetFileUpload" class="btn btn-tertiary text-sm" type="button">
+                    <Icon name="x" :size="14" /> Ganti file
+                  </button>
+                </div>
+
+                <div class="mt-3">
+                  <div class="card-label mb-2">Kolom terdeteksi:</div>
+                  <div class="chip-row">
+                    <span v-for="c in fileColumns" :key="c.variable" class="chip-var mono" :title="`Header asli: ${c.header}`">
+                      {{ wrapVar(c.variable) }}
+                    </span>
+                  </div>
+                </div>
+
+                <div class="mt-3 max-w-sm">
+                  <label class="card-label" for="wf-phone-col">Kolom nomor telepon</label>
+                  <select id="wf-phone-col" v-model="filePhoneVar" class="field-input mt-1">
+                    <option value="" disabled>\u2014 pilih kolom \u2014</option>
+                    <option v-for="c in fileColumns" :key="c.variable" :value="c.variable">
+                      {{ c.header }} \u2192 {{ wrapVar(c.variable) }}
+                    </option>
+                  </select>
+                </div>
+
+                <div class="mt-3 flex flex-wrap gap-2">
+                  <button @click="doFilePreview" :disabled="filePreviewing" class="btn btn-secondary text-sm" type="button">
+                    <Icon name="eye" :size="14" /> {{ filePreviewing ? 'Memproses…' : 'Preview 5 baris' }}
+                  </button>
+                  <button @click="doFileApply" :disabled="fileApplying || !filePhoneVar" class="btn btn-accent text-sm" type="button">
+                    <Icon name="check" :size="14" /> {{ fileApplying ? 'Menerapkan…' : 'Terapkan sebagai penerima' }}
+                  </button>
+                </div>
+
+                <div v-if="filePreview" class="mt-4">
+                  <div v-if="filePreview.unknown_variables?.length" class="alert-warning mb-3">
+                    <Icon name="alert" :size="15" class="mt-0.5 shrink-0" />
+                    <span>Variabel ini dipakai di pesan tapi <b>tidak ada</b> di file: {{ filePreview.unknown_variables.map(wrapVar).join(', ') }} \u2014 akan ter-render kosong.</span>
+                  </div>
+                  <div class="card-label mb-3">
+                    {{ filePreview.valid_rows }} baris bernomor valid
+                    <template v-if="filePreview.skipped_rows"> \u00b7 {{ filePreview.skipped_rows }} baris nomornya tidak valid (otomatis dilewati)</template>
+                  </div>
+                  <div class="preview-list">
+                    <div v-for="p in filePreview.previews" :key="p.row" class="preview-item">
+                      <div class="preview-head">
+                        <span class="font-semibold text-sm">Baris {{ p.row }}</span>
+                        <span class="mono text-xs card-label">{{ p.phone || 'nomor tidak valid' }}</span>
+                        <span v-if="!p.phone_valid" class="pill pill-negative">dilewati</span>
+                      </div>
+                      <div class="sample-wa">{{ p.message }}</div>
+                    </div>
+                  </div>
+                </div>
+              </template>
+            </template>
+      </div>
+
+      <!-- 2C: Variabel -->
+      <div v-if="selectedVersion" class="card card-pad mb-4 form-grid">
+            <div>
+              <h2 class="section-title">Variabel</h2>
+              <p class="card-label mt-1">
+                Variabel yang <b>sudah diisi AI per penerima</b> dari bagian Data di atas tidak perlu mapping manual.
+                Sisanya tentukan sumbernya: <b>field kontak</b> (beda per penerima, dari data kontak)
+                atau <b>nilai campaign</b> (sama untuk semua penerima).
+              </p>
+            </div>
+
+            <div v-if="!mappings.length" class="empty-inline">Memuat variabel…</div>
+
+            <div v-if="recipientVarsError" class="alert-warning">
+              <Icon name="alert" :size="15" class="mt-0.5 shrink-0" />
+              <span>Gagal memuat nilai AI per penerima dari server — kemungkinan <b>backend belum di-update</b>.
+              Jalankan <span class="mono">git pull</span> lalu <span class="mono">docker compose up -d --build</span>,
+              kemudian ulangi langkah ini. Selama backend lama, mapping harus diisi manual.</span>
+            </div>
+
+            <div v-for="m in mappings" :key="m.variable_name" class="mapping-card">
+              <div class="mono font-semibold" style="color: var(--accent-ink)">{{ wrapVar(m.variable_name) }}</div>
+
+              <!-- Sudah terisi AI per penerima: tampil info, bukan form manual -->
+              <template v-if="aiFilledCount(m.variable_name) > 0">
+                <div class="ai-filled-row">
+                  <span class="pill pill-accent"><Icon name="zap" :size="13" /> Terisi AI per penerima</span>
+                  <span class="card-label">{{ aiFilledCount(m.variable_name) }} penerima punya nilai sendiri-sendiri</span>
+                </div>
+                <div v-if="rvEditVar !== m.variable_name && recipientVars[m.variable_name]" class="preview-chips">
+                  <span v-for="(e, i) in recipientVars[m.variable_name].entries.slice(0, 3)" :key="i" class="chip" :title="`${e.name} (${e.phone})`">{{ e.value || '–' }}</span>
+                  <span v-if="recipientVars[m.variable_name].entries.length > 3" class="card-label">+{{ recipientVars[m.variable_name].entries.length - 3 }} lagi</span>
+                </div>
+                <div class="flex flex-wrap gap-2 mt-2">
+                  <button @click="rvEditVar === m.variable_name ? cancelRvEdit() : startRvEdit(m.variable_name)" class="btn btn-tertiary text-sm">
+                    <Icon name="pencil" :size="14" /> {{ rvEditVar === m.variable_name ? 'Tutup' : 'Lihat / ubah nilai' }}
+                  </button>
+                  <button @click="clearRvVar(m.variable_name)" class="btn btn-tertiary text-sm">
+                    <Icon name="trash" :size="14" /> Hapus, mapping manual
+                  </button>
+                </div>
+                <div v-if="rvEditVar === m.variable_name" class="tbl-wrap mt-3">
+                  <div class="tbl-scroll thin-scroll">
+                    <table class="tbl">
+                      <thead><tr><th>Penerima</th><th>Nomor</th><th>Nilai {{ wrapVar(m.variable_name) }}</th></tr></thead>
+                      <tbody>
+                        <tr v-for="row in rvEditRows" :key="row.recipient_id">
+                          <td>{{ row.name || '–' }}</td>
+                          <td class="mono whitespace-nowrap">{{ row.phone }}</td>
+                          <td><input v-model="row.value" class="field-input field-sm" /></td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                  <div class="flex gap-2 mt-2">
+                    <button @click="saveRvEdit" :disabled="rvSaving" class="btn btn-accent text-sm">{{ rvSaving ? 'Menyimpan…' : 'Simpan nilai' }}</button>
+                    <button @click="cancelRvEdit" class="btn btn-tertiary text-sm">Batal</button>
+                  </div>
+                </div>
+              </template>
+
+              <!-- Mapping manual -->
+              <template v-else>
+                <div class="mapping-sources">
+                  <label class="radio-row">
+                    <input type="radio" v-model="m.source" value="contact" class="radio-accent" />
+                    Field kontak
+                  </label>
+                  <label class="radio-row">
+                    <input type="radio" v-model="m.source" value="campaign" class="radio-accent" />
+                    Nilai campaign
+                  </label>
+                </div>
+                <div v-if="m.source === 'contact'">
+                  <label class="field-label">Field kontak</label>
+                  <select v-model="m.contact_field" class="field-input w-auto">
+                    <option value="name">Nama (name)</option>
+                    <option value="phone">Nomor (phone)</option>
+                    <option value="tag">Tag</option>
+                  </select>
+                </div>
+                <div v-else>
+                  <label class="field-label">Nilai (berlaku untuk semua penerima)</label>
+                  <input v-model="m.value" class="field-input" :placeholder="`Nilai untuk {{${m.variable_name}}}`" />
+                  <div v-if="aiResult?.[m.variable_name]" class="field-hint">Prefill dari AI: “{{ aiResult[m.variable_name] }}”. Silakan ubah bila perlu.</div>
+                </div>
+              </template>
+            </div>
+      </div>
+
+      <!-- 2D: Penerima -->
+      <div class="card card-pad mb-4 form-grid">
+            <h2 class="section-title">Penerima</h2>
+
+            <div v-if="!form.is_test_mode && existingRecipients > 0" class="alert-info">
+              <Icon name="info" :size="15" class="mt-0.5 shrink-0" />
+              <div><b>{{ existingRecipients }} penerima sudah ada</b> (dari AI/file di bagian Data di atas). Anda bisa tambah lagi di bawah, atau langsung lanjut — yang sudah ada ikut terkirim.</div>
+            </div>
+
+            <div v-if="form.is_test_mode">
+              <div class="alert-warning mb-4">
+                <Icon name="flask" :size="15" class="mt-0.5 shrink-0" />
+                <div><b>Mode test aktif.</b> Penerima otomatis memakai nomor test terdaftar. Kontak asli tidak akan menerima pesan.</div>
+              </div>
+              <div v-if="recipientsLoading" class="card-label">Memuat nomor test…</div>
+              <ul v-else class="test-list">
+                <li v-for="t in testNums" :key="t.id" class="test-row">
+                  <Icon name="check" :size="14" class="test-check" />
+                  <span class="font-medium">{{ t.label }}</span>
+                  <span class="mono card-label">{{ formatPhone(t.phone) }}</span>
+                </li>
+              </ul>
+              <div v-if="!recipientsLoading && !testNums.length" class="empty-inline">
+                Belum ada nomor test aktif. Tambahkan di menu <RouterLink to="/test-numbers" class="row-link">Nomor Test</RouterLink>.
               </div>
             </div>
-          </div>
-        </template>
-      </template>
-    </section>
 
-    <!-- ================= LANGKAH 4: MAPPING ================= -->
-    <section v-if="step === 4" class="card card-pad form-grid">
-      <div>
-        <h2 class="section-title">4. Mapping variabel</h2>
-        <p class="card-label mt-1">
-          Variabel yang <b>sudah diisi AI per penerima</b> di langkah 3 tidak perlu mapping manual.
-          Sisanya tentukan sumbernya: <b>field kontak</b> (beda per penerima, dari data kontak)
-          atau <b>nilai campaign</b> (sama untuk semua penerima).
-        </p>
-      </div>
+            <div v-else class="form-grid">
+              <div class="recipients-toolbar">
+                <div class="search-wrap">
+                  <Icon name="search" :size="15" class="search-icon" />
+                  <input v-model="contactSearch" type="search" placeholder="Cari nama / nomor…" class="field-input search-input" />
+                </div>
+                <span class="card-label">{{ selectedContacts.size }} dari {{ selectableCount }} kontak dipilih</span>
+                <button @click="toggleAll(true)" class="btn-tertiary text-sm">Pilih semua</button>
+                <button @click="toggleAll(false)" class="btn-tertiary text-sm">Batalkan semua</button>
+              </div>
+              <div class="card-label">Kontak blacklist otomatis dikecualikan dan tidak bisa dipilih.</div>
 
-      <div v-if="!mappings.length" class="empty-inline">Memuat variabel…</div>
+              <!-- Tambah nomor cepat: otomatis tersimpan sebagai kontak -->
+              <div class="quickadd">
+                <div class="text-sm font-medium mb-2">Tambah nomor cepat <span class="font-normal card-label">— langsung tersimpan sebagai kontak dan terpilih</span></div>
+                <div class="quickadd-row">
+                  <input v-model="quickName" type="text" placeholder="Nama PIC (opsional)" class="field-input" />
+                  <input v-model="quickPhone" type="tel" placeholder="Nomor WA, mis. 0812…" class="field-input mono" @keyup.enter="quickAddContact" />
+                  <button @click="quickAddContact" :disabled="quickAdding || !quickPhone.trim()" class="btn btn-accent">
+                    <Icon name="plus" :size="14" /> {{ quickAdding ? 'Menyimpan…' : 'Tambah' }}
+                  </button>
+                </div>
+                <div class="field-hint">Nomor otomatis diseragamkan: <span class="mono">0812…</span>, <span class="mono">+62812…</span>, <span class="mono">62812…</span> dianggap nomor yang sama, tidak akan dobel.</div>
+              </div>
 
-      <div v-if="recipientVarsError" class="alert-warning">
-        <Icon name="alert" :size="15" class="mt-0.5 shrink-0" />
-        <span>Gagal memuat nilai AI per penerima dari server — kemungkinan <b>backend belum di-update</b>.
-        Jalankan <span class="mono">git pull</span> lalu <span class="mono">docker compose up -d --build</span>,
-        kemudian ulangi langkah ini. Selama backend lama, mapping harus diisi manual.</span>
-      </div>
-
-      <div v-for="m in mappings" :key="m.variable_name" class="mapping-card">
-        <div class="mono font-semibold" style="color: var(--accent-ink)">{{ wrapVar(m.variable_name) }}</div>
-
-        <!-- Sudah terisi AI per penerima: tampil info, bukan form manual -->
-        <template v-if="aiFilledCount(m.variable_name) > 0">
-          <div class="ai-filled-row">
-            <span class="pill pill-accent"><Icon name="zap" :size="13" /> Terisi AI per penerima</span>
-            <span class="card-label">{{ aiFilledCount(m.variable_name) }} penerima punya nilai sendiri-sendiri</span>
-          </div>
-          <div v-if="rvEditVar !== m.variable_name && recipientVars[m.variable_name]" class="preview-chips">
-            <span v-for="(e, i) in recipientVars[m.variable_name].entries.slice(0, 3)" :key="i" class="chip" :title="`${e.name} (${e.phone})`">{{ e.value || '–' }}</span>
-            <span v-if="recipientVars[m.variable_name].entries.length > 3" class="card-label">+{{ recipientVars[m.variable_name].entries.length - 3 }} lagi</span>
-          </div>
-          <div class="flex flex-wrap gap-2 mt-2">
-            <button @click="rvEditVar === m.variable_name ? cancelRvEdit() : startRvEdit(m.variable_name)" class="btn btn-tertiary text-sm">
-              <Icon name="pencil" :size="14" /> {{ rvEditVar === m.variable_name ? 'Tutup' : 'Lihat / ubah nilai' }}
-            </button>
-            <button @click="clearRvVar(m.variable_name)" class="btn btn-tertiary text-sm">
-              <Icon name="trash" :size="14" /> Hapus, mapping manual
-            </button>
-          </div>
-          <div v-if="rvEditVar === m.variable_name" class="tbl-wrap mt-3">
-            <div class="tbl-scroll thin-scroll">
-              <table class="tbl">
-                <thead><tr><th>Penerima</th><th>Nomor</th><th>Nilai {{ wrapVar(m.variable_name) }}</th></tr></thead>
-                <tbody>
-                  <tr v-for="row in rvEditRows" :key="row.recipient_id">
-                    <td>{{ row.name || '–' }}</td>
-                    <td class="mono whitespace-nowrap">{{ row.phone }}</td>
-                    <td><input v-model="row.value" class="field-input field-sm" /></td>
-                  </tr>
-                </tbody>
-              </table>
+              <div v-if="recipientsLoading" class="empty-inline">Memuat kontak…</div>
+              <div v-else class="contact-list thin-scroll">
+                <label
+                  v-for="c in visibleContacts"
+                  :key="c.id"
+                  class="contact-row"
+                  :class="{ disabled: c.is_blacklisted }"
+                >
+                  <input
+                    type="checkbox"
+                    :checked="selectedContacts.has(c.id)"
+                    :disabled="c.is_blacklisted"
+                    @change="toggleContact(c.id)"
+                    class="check-accent"
+                  />
+                  <span class="contact-main">
+                    <span class="font-medium">{{ c.name }}</span>
+                    <span class="mono card-label">{{ formatPhone(c.phone) }}</span>
+                  </span>
+                  <span v-if="c.tag" class="pill pill-neutral">{{ c.tag }}</span>
+                  <span v-if="c.is_blacklisted" class="pill pill-negative">Blacklist</span>
+                </label>
+                <div v-if="!visibleContacts.length" class="empty-inline">
+                  Tidak ada kontak yang cocok.
+                </div>
+              </div>
             </div>
-            <div class="flex gap-2 mt-2">
-              <button @click="saveRvEdit" :disabled="rvSaving" class="btn btn-accent text-sm">{{ rvSaving ? 'Menyimpan…' : 'Simpan nilai' }}</button>
-              <button @click="cancelRvEdit" class="btn btn-tertiary text-sm">Batal</button>
+      </div>
+
+      <!-- 2E: Preview -->
+      <div class="card card-pad mb-4">
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-1">
+          <h2 class="section-title">Preview</h2>
+          <button @click="doComposePreview" :disabled="composePreviewLoading" class="btn btn-secondary text-sm" type="button">
+            <Icon name="eye" :size="14" /> {{ composePreviewLoading ? 'Memuat…' : 'Pratinjau pesan' }}
+          </button>
+        </div>
+        <p class="card-label mb-3">Lihat hasil render per penerima di sini — tanpa pindah langkah.</p>
+        <div v-if="composePreview">
+          <div v-if="composePreview.validation_errors?.length" class="alert-negative mb-3">
+            <div class="font-semibold text-sm mb-1">Belum bisa dikirim:</div>
+            <ul class="list-disc list-inside text-sm space-y-0.5">
+              <li v-for="(e, i) in composePreview.validation_errors" :key="i">{{ typeof e === 'string' ? e : e.message || JSON.stringify(e) }}</li>
+            </ul>
+          </div>
+          <div v-else class="alert-positive mb-3">
+            <Icon name="check" :size="15" class="mt-0.5 shrink-0" />
+            <span>Siap dikirim — {{ formatNumber(composePreview.total_recipients) }} penerima.</span>
+          </div>
+          <div class="preview-list">
+            <div v-for="(s, i) in (composePreview.sample_messages || []).slice(0, 5)" :key="i" class="preview-item">
+              <div class="preview-head"><span class="card-label text-xs">Sample {{ i + 1 }} — {{ typeof s === 'object' ? (s.phone || s.name || '') : '' }}</span></div>
+              <div class="sample-wa">{{ typeof s === 'object' ? (s.message || s.body || s.rendered) : s }}</div>
             </div>
           </div>
-        </template>
+        </div>
+        <EmptyState v-else icon="chat" title="Belum ada preview" hint="Klik 'Pratinjau pesan' untuk melihat hasil render." />
+      </div>
 
-        <!-- Mapping manual -->
-        <template v-else>
-          <div class="mapping-sources">
-            <label class="radio-row">
-              <input type="radio" v-model="m.source" value="contact" class="radio-accent" />
-              Field kontak
-            </label>
-            <label class="radio-row">
-              <input type="radio" v-model="m.source" value="campaign" class="radio-accent" />
-              Nilai campaign
-            </label>
-          </div>
-          <div v-if="m.source === 'contact'">
-            <label class="field-label">Field kontak</label>
-            <select v-model="m.contact_field" class="field-input w-auto">
-              <option value="name">Nama (name)</option>
-              <option value="phone">Nomor (phone)</option>
-              <option value="tag">Tag</option>
-            </select>
-          </div>
-          <div v-else>
-            <label class="field-label">Nilai (berlaku untuk semua penerima)</label>
-            <input v-model="m.value" class="field-input" :placeholder="`Nilai untuk {{${m.variable_name}}}`" />
-            <div v-if="aiResult?.[m.variable_name]" class="field-hint">Prefill dari AI: “{{ aiResult[m.variable_name] }}”. Silakan ubah bila perlu.</div>
-          </div>
-        </template>
+      <div class="wizard-nav">
+        <button @click="back" :disabled="loading" class="btn btn-secondary">
+          <Icon name="chevron-left" :size="15" /> Kembali
+        </button>
+        <button @click="next" :disabled="loading" class="btn btn-accent">
+          {{ loading ? 'Memproses…' : 'Lanjut ke Review & Kirim' }} <Icon v-if="!loading" name="chevron-right" :size="15" />
+        </button>
       </div>
     </section>
 
-    <!-- ================= LANGKAH 5: PENERIMA ================= -->
-    <section v-if="step === 5" class="card card-pad form-grid">
-      <h2 class="section-title">5. Pilih penerima</h2>
 
-      <div v-if="!form.is_test_mode && existingRecipients > 0" class="alert-info">
-        <Icon name="info" :size="15" class="mt-0.5 shrink-0" />
-        <div><b>{{ existingRecipients }} penerima sudah ada</b> (dari AI/file di langkah 3). Anda bisa tambah lagi di bawah, atau langsung lanjut — yang sudah ada ikut terkirim.</div>
-      </div>
-
-      <div v-if="form.is_test_mode">
-        <div class="alert-warning mb-4">
-          <Icon name="flask" :size="15" class="mt-0.5 shrink-0" />
-          <div><b>Mode test aktif.</b> Penerima otomatis memakai nomor test terdaftar. Kontak asli tidak akan menerima pesan.</div>
-        </div>
-        <div v-if="recipientsLoading" class="card-label">Memuat nomor test…</div>
-        <ul v-else class="test-list">
-          <li v-for="t in testNums" :key="t.id" class="test-row">
-            <Icon name="check" :size="14" class="test-check" />
-            <span class="font-medium">{{ t.label }}</span>
-            <span class="mono card-label">{{ formatPhone(t.phone) }}</span>
-          </li>
-        </ul>
-        <div v-if="!recipientsLoading && !testNums.length" class="empty-inline">
-          Belum ada nomor test aktif. Tambahkan di menu <RouterLink to="/test-numbers" class="row-link">Nomor Test</RouterLink>.
-        </div>
-      </div>
-
-      <div v-else class="form-grid">
-        <div class="recipients-toolbar">
-          <div class="search-wrap">
-            <Icon name="search" :size="15" class="search-icon" />
-            <input v-model="contactSearch" type="search" placeholder="Cari nama / nomor…" class="field-input search-input" />
-          </div>
-          <span class="card-label">{{ selectedContacts.size }} dari {{ selectableCount }} kontak dipilih</span>
-          <button @click="toggleAll(true)" class="btn-tertiary text-sm">Pilih semua</button>
-          <button @click="toggleAll(false)" class="btn-tertiary text-sm">Batalkan semua</button>
-        </div>
-        <div class="card-label">Kontak blacklist otomatis dikecualikan dan tidak bisa dipilih.</div>
-
-        <!-- Tambah nomor cepat: otomatis tersimpan sebagai kontak -->
-        <div class="quickadd">
-          <div class="text-sm font-medium mb-2">Tambah nomor cepat <span class="font-normal card-label">— langsung tersimpan sebagai kontak dan terpilih</span></div>
-          <div class="quickadd-row">
-            <input v-model="quickName" type="text" placeholder="Nama PIC (opsional)" class="field-input" />
-            <input v-model="quickPhone" type="tel" placeholder="Nomor WA, mis. 0812…" class="field-input mono" @keyup.enter="quickAddContact" />
-            <button @click="quickAddContact" :disabled="quickAdding || !quickPhone.trim()" class="btn btn-accent">
-              <Icon name="plus" :size="14" /> {{ quickAdding ? 'Menyimpan…' : 'Tambah' }}
-            </button>
-          </div>
-          <div class="field-hint">Nomor otomatis diseragamkan: <span class="mono">0812…</span>, <span class="mono">+62812…</span>, <span class="mono">62812…</span> dianggap nomor yang sama, tidak akan dobel.</div>
-        </div>
-
-        <div v-if="recipientsLoading" class="empty-inline">Memuat kontak…</div>
-        <div v-else class="contact-list thin-scroll">
-          <label
-            v-for="c in visibleContacts"
-            :key="c.id"
-            class="contact-row"
-            :class="{ disabled: c.is_blacklisted }"
-          >
-            <input
-              type="checkbox"
-              :checked="selectedContacts.has(c.id)"
-              :disabled="c.is_blacklisted"
-              @change="toggleContact(c.id)"
-              class="check-accent"
-            />
-            <span class="contact-main">
-              <span class="font-medium">{{ c.name }}</span>
-              <span class="mono card-label">{{ formatPhone(c.phone) }}</span>
-            </span>
-            <span v-if="c.tag" class="pill pill-neutral">{{ c.tag }}</span>
-            <span v-if="c.is_blacklisted" class="pill pill-negative">Blacklist</span>
-          </label>
-          <div v-if="!visibleContacts.length" class="empty-inline">
-            Tidak ada kontak yang cocok.
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- ================= LANGKAH 6: REVIEW ================= -->
-    <section v-if="step === 6" class="form-grid">
-      <h2 class="section-title">6. Review & konfirmasi</h2>
+    <!-- ================= LANGKAH 3: REVIEW & KIRIM ================= -->
+    <section v-if="step === 3" class="form-grid">
+      <h2 class="section-title">3. Review & konfirmasi</h2>
 
       <div v-if="reviewLoading" class="card card-pad">
         <div class="grid gap-3">
@@ -1561,17 +1721,14 @@ onMounted(async () => {
     </section>
 
     <!-- Navigasi bawah -->
-    <div v-if="step < 6" class="wizard-nav">
-      <button @click="back" :disabled="step === 1 || loading" class="btn btn-secondary">
-        <Icon name="chevron-left" :size="15" /> Kembali
-      </button>
+    <div v-if="step === 1" class="wizard-nav">
       <button @click="next" :disabled="loading" class="btn btn-accent">
-        {{ loading ? 'Memproses…' : step === 5 ? 'Lanjut ke review' : 'Lanjut' }} <Icon v-if="!loading" name="chevron-right" :size="15" />
+        {{ loading ? 'Memproses…' : 'Lanjut' }} <Icon v-if="!loading" name="chevron-right" :size="15" />
       </button>
     </div>
-    <div v-else class="wizard-nav wizard-nav-start">
+    <div v-if="step === 3" class="wizard-nav wizard-nav-start">
       <button @click="back" class="btn btn-secondary">
-        <Icon name="chevron-left" :size="15" /> Kembali ke penerima
+        <Icon name="chevron-left" :size="15" /> Kembali
       </button>
     </div>
 
@@ -1727,6 +1884,7 @@ onMounted(async () => {
 .review-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 .wizard-nav { display: flex; justify-content: space-between; margin-top: 24px; gap: 8px; }
 .wizard-nav-start { justify-content: flex-start; }
+.compose > .card { margin-bottom: 16px; }
 
 /* Tab upload file (langkah 3) */
 .upload-drop {

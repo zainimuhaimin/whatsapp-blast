@@ -6,7 +6,7 @@ Panduan langkah-demi-langkah memakai Tool Blast WhatsApp — dari menyiapkan kon
 
 ## Alur Singkat
 
-**Kontak → Template → Campaign → Input AI → Mapping Variabel → Review & Konfirmasi → Kirim → Pantau**
+**Kontak → Template/Pesan Bebas → Campaign → Input AI/File → Mapping Variabel → Review & Konfirmasi → Kirim → Pantau**
 
 Setiap blast selalu melewati **halaman review & konfirmasi** — tidak ada pesan yang terkirim tanpa Anda menyetujuinya dulu.
 
@@ -46,17 +46,23 @@ Variabel yang tersedia akan **terdeteksi otomatis** dari body (pada contoh di at
 
 ## 3. Buat Campaign
 
-Buka menu **Campaign** → **Campaign Baru**, lalu ikuti wizard:
+Buka menu **Campaign** → **Campaign Baru**. Wizard kini hanya **3 langkah**:
 
-1. **Nama campaign** — mis. `Blast Promo Ramadhan - Gelombang 1`.
-2. **Pilih template** (versi yang ter-pin).
-3. **Pilih provider:**
-   - **Resmi** — untuk blast produksi sungguhan (berbayar per pesan, lihat [providers.md](providers.md)).
-   - **Non-resmi (Baileys)** — untuk testing; **jangan pakai nomor WA utama/pribadi Anda** (risiko banned — baca peringatan di [providers.md](providers.md)).
-   - **Manual (via WhatsApp Web)** — tanpa otomasi sama sekali: setelah konfirmasi, kirim per penerima dari halaman detail campaign (klik per penerima → WA Web terbuka dengan pesan ter-render → tandai Terkirim/Lewati). Rp 0, nol risiko banned. Lihat §11.
-4. **Mode test (opsional):** aktifkan untuk latihan — pesan hanya dikirim ke nomor test terdaftar, bukan ke kontak asli. Banner jelas akan tampil di UI agar tidak tertukar.
-5. **Jadwalkan (opsional):** isi tanggal & jam kirim untuk blast terjadwal; kosongkan untuk kirim segera setelah konfirmasi.
-6. **Pilih penerima:** centang kontak (bisa filter per tag). Kontak yang di-blacklist otomatis tidak muncul. Nomor duplikat otomatis dilewati.
+1. **Info Dasar** — nama campaign, jalur pengiriman, mode test, jadwal:
+   - **Nama campaign** — mis. `Blast Promo Ramadhan - Gelombang 1`.
+   - **Pilih provider:**
+     - **Resmi** — untuk blast produksi sungguhan (berbayar per pesan, lihat [providers.md](providers.md)).
+     - **Non-resmi (Baileys)** — untuk testing; **jangan pakai nomor WA utama/pribadi Anda** (risiko banned — baca peringatan di [providers.md](providers.md)).
+     - **Manual (via WhatsApp Web)** — tanpa otomasi sama sekali: setelah konfirmasi, kirim per penerima dari halaman detail campaign (klik per penerima → WA Web terbuka dengan pesan ter-render → tandai Terkirim/Lewati). Rp 0, nol risiko banned. Lihat §11.
+   - **Mode test (opsional):** aktifkan untuk latihan — pesan hanya dikirim ke nomor test terdaftar, bukan ke kontak asli.
+   - **Jadwalkan (opsional):** isi tanggal & jam kirim untuk blast terjadwal; kosongkan untuk kirim segera setelah konfirmasi.
+2. **Pesan & Data** — semua dalam satu layar:
+   - **Pesan** — pilih **Template** yang sudah ada, atau **Tulis Bebas** (pesan bebas otomatis disimpan sebagai template baru). Template yang dipilih bisa diedit teksnya (menjadi versi baru khusus campaign ini).
+   - **Data Penerima** — pilih **AI** (daftar penerima / nilai umum) atau **Upload file** (CSV/Excel). Variabel otomatis dibangun dari hasil AI maupun header file.
+   - **Variabel** — mapping tiap variabel (yang sudah terisi dari AI/file tidak perlu mapping manual).
+   - **Penerima** — daftar penerima (dari AI/file) + tambah manual dari kontak.
+   - **Preview** — pratinjau pesan ter-render + daftar error validasi, tanpa pindah langkah.
+3. **Review & Kirim** — periksa ringkasan akhir, lalu konfirmasi.
 
 ## 4. Input AI — Isi Variabel Secara Otomatis
 
@@ -65,12 +71,14 @@ Buka menu **Campaign** → **Campaign Baru**, lalu ikuti wizard:
 > tempel di kolom API Key, pilih model (mis. `gemini-2.5-flash`), lalu klik **🔌 Test koneksi**
 > untuk memastikan key valid. Key tersimpan aman — tidak pernah ditampilkan utuh.
 
-> **Pesan fleksibel:** pesan tidak harus terpaku template. Di langkah ini ada tombol
-> **Ubah pesan (fleksibel)** — teks pesan bisa diedit bebas (variabel tetap bisa ditempel),
-> lalu disimpan sebagai **versi template baru** khusus campaign ini. Template aslinya tidak berubah,
+Input AI ada di **langkah 2 (Pesan & Data) → bagian Data Penerima**, berdampingan dengan tab Upload file.
+
+> **Pesan fleksibel:** pesan tidak harus terpaku template. Di bagian Pesan ada pilihan
+> **Tulis Bebas** — tulis pesan bebas (variabel tetap bisa ditempel dari chip),
+> lalu klik **Buat template dari pesan ini**. Template aslinya tidak berubah,
 > dan mapping yang sudah ada ikut terbawa.
 
-Langkah ini punya **dua mode**:
+Bagian Data punya **tiga mode** (tab):
 
 ### Mode "Daftar penerima" — nilai berbeda per orang (default)
 
