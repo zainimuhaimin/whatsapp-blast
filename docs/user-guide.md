@@ -58,9 +58,9 @@ Buka menu **Campaign** → **Campaign Baru**. Wizard kini hanya **3 langkah**:
    - **Jadwalkan (opsional):** isi tanggal & jam kirim untuk blast terjadwal; kosongkan untuk kirim segera setelah konfirmasi.
 2. **Pesan & Data** — semua dalam satu layar:
    - **Pesan** — pilih **Template** yang sudah ada, atau **Tulis Bebas** (pesan bebas otomatis disimpan sebagai template baru). Template yang dipilih bisa diedit teksnya (menjadi versi baru khusus campaign ini).
-   - **Data Penerima** — pilih **AI** (daftar penerima / nilai umum) atau **Upload file** (CSV/Excel). Variabel otomatis dibangun dari hasil AI maupun header file.
-   - **Variabel** — mapping tiap variabel (yang sudah terisi dari AI/file tidak perlu mapping manual).
-   - **Penerima** — daftar penerima (dari AI/file) + tambah manual dari kontak.
+   - **Data Penerima** — pilih **AI — Daftar penerima** atau **Upload file** (CSV/Excel). Variabel otomatis dibangun dari hasil AI maupun header file. Di input AI ada chip variabel — klik untuk menyisipkan `{{nama_variabel}}` sebagai panduan eksplisit bagi AI.
+   - **Variabel** — sadar-sumber: variabel yang terisi per penerima tampil berlabel **"Terisi AI per penerima"** atau **"Terisi dari file"** (lengkap dengan nama kolom file aslinya) sesuai input yang dipakai; tidak perlu mapping manual. Sisanya di-mapping seperti biasa.
+   - **Penerima** — daftar penerima (dari AI/file) + tambah manual dari kontak. Kontak yang cocok dengan data AI/file (atau baru dibuat) **otomatis terceklis** di daftar kontak — tidak perlu pilih ulang.
    - **Preview** — pratinjau pesan ter-render + daftar error validasi, tanpa pindah langkah.
 3. **Review & Kirim** — periksa ringkasan akhir, lalu konfirmasi.
 

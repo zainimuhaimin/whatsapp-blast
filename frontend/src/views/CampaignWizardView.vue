@@ -107,6 +107,19 @@ const freeMsgVars = computed(() => extractVariables(freeMsg.value || ''))
 // Preview inline di langkah 2
 const composePreview = ref(null)
 const composePreviewLoading = ref(false)
+// Sumber nilai per variabel: 'ai' | 'file' (diisi saat apply; untuk resume tampil generik)
+const varSources = ref({})
+const varSourceLabel = (varName) => {
+  const s = varSources.value[varName]
+  if (s === 'ai') return 'Terisi AI per penerima'
+  if (s === 'file') return 'Terisi dari file'
+  return 'Terisi per penerima'
+}
+// Header asli kolom file untuk sebuah variabel (bila beda dari nama variabel)
+const fileHeaderOf = (varName) => {
+  const c = fileColumns.value.find((x) => x.variable === varName)
+  return c && c.header && c.header !== varName ? c.header : ''
+}
 const msgEditVars = computed(() => extractVariables(msgEdit.value || ''))
 const msgEditChips = computed(() => {
   const seen = []
@@ -329,6 +342,13 @@ async function doFileApply() {
     })
     const warns = []
     if (res.skipped?.length) warns.push(`${res.skipped.length} baris dilewati`)
+    // Tandai sumber variabel dari kolom file + auto-check kontak yang cocok/baru di picker
+    for (const c of fileColumns.value) {
+      if (c.variable) varSources.value[c.variable] = 'file'
+    }
+    for (const cid of res.contact_ids || []) selectedContacts.value.add(cid)
+    await loadRecipientsData()
+    await refreshRecipientVars()
     toast.success(
       `${res.added} penerima ditambahkan dari file.` + (warns.length ? ` (${warns.join('; ')})` : '')
     )
@@ -439,6 +459,13 @@ async function applyAiRecipients() {
     )
     aiRecDone.value = data
     aiRecItems.value = []
+    // Tandai sumber variabel + auto-check kontak yang cocok/baru di picker
+    for (const r of rows) {
+      for (const k of Object.keys(r.variables || {})) varSources.value[k] = 'ai'
+    }
+    for (const cid of data.contact_ids || []) selectedContacts.value.add(cid)
+    await loadRecipientsData()
+    await refreshRecipientVars()
     const parts = [`${data.added} penerima ditambahkan`]
     if (data.created_contacts) parts.push(`${data.created_contacts} kontak baru`)
     if (data.matched_contacts) parts.push(`${data.matched_contacts} kontak dikenali`)
@@ -468,13 +495,9 @@ function smartDefault(varName) {
   return { source: 'campaign', contact_field: null }
 }
 
-async function initMappings() {
-  let existing = []
-  try {
-    const data = await campaignsApi.mappings(campaign.value.id)
-    existing = Array.isArray(data) ? data : data.mappings || []
-  } catch { /* biarkan default */ }
-  // Nilai per-penerima hasil AI: variabel yang sudah terisi tidak perlu mapping manual
+// Muat ulang nilai variabel per penerima TANPA mereset mapping manual user
+async function refreshRecipientVars() {
+  if (!campaign.value) return
   try {
     const rv = await campaignsApi.recipientVariables(campaign.value.id)
     const map = {}
@@ -486,6 +509,16 @@ async function initMappings() {
     // Jangan diam-diam fallback ke mapping manual: tandai agar UI menampilkan peringatan
     recipientVarsError.value = true
   }
+}
+
+async function initMappings() {
+  let existing = []
+  try {
+    const data = await campaignsApi.mappings(campaign.value.id)
+    existing = Array.isArray(data) ? data : data.mappings || []
+  } catch { /* biarkan default */ }
+  // Nilai per-penerima hasil AI/file: variabel yang sudah terisi tidak perlu mapping manual
+  await refreshRecipientVars()
   const byName = Object.fromEntries(existing.map((m) => [m.variable_name, m]))
   mappings.value = selectedVariables.value.map((varName) => {
     const prev = byName[varName]
@@ -1347,9 +1380,9 @@ onMounted(async () => {
             <div>
               <h2 class="section-title">Variabel</h2>
               <p class="card-label mt-1">
-                Variabel yang <b>sudah diisi AI per penerima</b> dari bagian Data di atas tidak perlu mapping manual.
-                Sisanya tentukan sumbernya: <b>field kontak</b> (beda per penerima, dari data kontak)
-                atau <b>nilai campaign</b> (sama untuk semua penerima).
+                Variabel yang <b>sudah terisi per penerima</b> — dari AI maupun kolom file di bagian Data di atas —
+                tidak perlu mapping manual. Sisanya tentukan sumbernya: <b>field kontak</b> (beda per penerima,
+                dari data kontak) atau <b>nilai campaign</b> (sama untuk semua penerima).
               </p>
             </div>
 
@@ -1368,8 +1401,9 @@ onMounted(async () => {
               <!-- Sudah terisi AI per penerima: tampil info, bukan form manual -->
               <template v-if="aiFilledCount(m.variable_name) > 0">
                 <div class="ai-filled-row">
-                  <span class="pill pill-accent"><Icon name="zap" :size="13" /> Terisi AI per penerima</span>
+                  <span class="pill pill-accent"><Icon name="zap" :size="13" /> {{ varSourceLabel(m.variable_name) }}</span>
                   <span class="card-label">{{ aiFilledCount(m.variable_name) }} penerima punya nilai sendiri-sendiri</span>
+                  <span v-if="varSources[m.variable_name] === 'file' && fileHeaderOf(m.variable_name)" class="card-label">Kolom file: "{{ fileHeaderOf(m.variable_name) }}"</span>
                 </div>
                 <div v-if="rvEditVar !== m.variable_name && recipientVars[m.variable_name]" class="preview-chips">
                   <span v-for="(e, i) in recipientVars[m.variable_name].entries.slice(0, 3)" :key="i" class="chip" :title="`${e.name} (${e.phone})`">{{ e.value || '–' }}</span>
@@ -1438,7 +1472,7 @@ onMounted(async () => {
 
             <div v-if="!form.is_test_mode && existingRecipients > 0" class="alert-info">
               <Icon name="info" :size="15" class="mt-0.5 shrink-0" />
-              <div><b>{{ existingRecipients }} penerima sudah ada</b> (dari AI/file di bagian Data di atas). Anda bisa tambah lagi di bawah, atau langsung lanjut — yang sudah ada ikut terkirim.</div>
+              <div><b>{{ existingRecipients }} penerima sudah ada</b> (dari AI/file di bagian Data di atas). Kontak yang cocok/baru otomatis terceklis di bawah — tidak perlu pilih ulang.</div>
             </div>
 
             <div v-if="form.is_test_mode">

@@ -100,6 +100,7 @@ class AIApplyRecipientsResponse(BaseModel):
     created_contacts: int
     matched_contacts: int
     skipped: list[str] = Field(default_factory=list)
+    contact_ids: list[str] = Field(default_factory=list)
 
 
 class RecipientVariableEntry(BaseModel):

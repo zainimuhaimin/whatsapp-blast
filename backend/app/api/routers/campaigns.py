@@ -554,6 +554,8 @@ def _apply_recipient_rows(db: Session, campaign: Campaign,
 
     added = created = matched = 0
     skipped: list[str] = []
+    contact_ids: list[str] = []
+    _seen_cids: set[str] = set()
     for item in rows:
         phone_raw = (item.get("phone") or "").strip()
         try:
@@ -584,12 +586,16 @@ def _apply_recipient_rows(db: Session, campaign: Campaign,
             campaign_id=campaign.id, contact_id=contact.id, phone=phone)
         db.add(recipient)
         db.flush()
+        cid_str = str(contact.id)
+        if cid_str not in _seen_cids:
+            _seen_cids.add(cid_str)
+            contact_ids.append(cid_str)
         for var, val in item_vars.items():
             db.add(CampaignRecipientVariable(
                 recipient_id=recipient.id, variable_name=var, value=val))
         existing_sigs.add(_sig(phone, item_vars))
         added += 1
-    return added, created, matched, skipped
+    return added, created, matched, skipped, contact_ids
 
 
 @router.post("/{campaign_id}/ai-apply-recipients", response_model=AIApplyRecipientsResponse)
@@ -607,7 +613,7 @@ def ai_apply_recipients(campaign_id: UUID, payload: AIApplyRecipientsRequest,
     variables = set(campaign.template_version.variables or [])
     rows = [{"phone": item.phone, "name": item.name,
              "variables": dict(item.variables or {})} for item in payload.items]
-    added, created, matched, skipped = _apply_recipient_rows(db, campaign, rows, variables)
+    added, created, matched, skipped, contact_ids = _apply_recipient_rows(db, campaign, rows, variables)
     db.commit()
     write_audit(db, "campaign.ai_apply_recipients", user_id=user.id,
                 entity_type="campaign", entity_id=str(campaign.id),
@@ -616,7 +622,7 @@ def ai_apply_recipients(campaign_id: UUID, payload: AIApplyRecipientsRequest,
                 ip_address=_ip(request))
     return AIApplyRecipientsResponse(
         added=added, created_contacts=created,
-        matched_contacts=matched, skipped=skipped)
+        matched_contacts=matched, skipped=skipped, contact_ids=contact_ids)
 
 
 @router.post("/{campaign_id}/apply-file")
@@ -658,7 +664,7 @@ def apply_file(campaign_id: UUID, payload: dict, request: Request,
                  if k != phone_variable and v not in (None, "")}
         rows.append({"phone": str(row.get(phone_variable) or ""),
                      "name": name, "variables": vars_})
-    added, created, matched, skipped = _apply_recipient_rows(db, campaign, rows, variables)
+    added, created, matched, skipped, contact_ids = _apply_recipient_rows(db, campaign, rows, variables)
     db.commit()
     write_audit(db, "campaign.apply_file", user_id=user.id,
                 entity_type="campaign", entity_id=str(campaign.id),
@@ -667,7 +673,8 @@ def apply_file(campaign_id: UUID, payload: dict, request: Request,
                           "matched_contacts": matched, "skipped": skipped},
                 ip_address=_ip(request))
     return {"ok": True, "added": added, "created_contacts": created,
-            "matched_contacts": matched, "skipped": skipped}
+            "matched_contacts": matched, "skipped": skipped,
+            "contact_ids": contact_ids}
 
 
 @router.get("/{campaign_id}/recipient-variables", response_model=RecipientVariablesResponse)
