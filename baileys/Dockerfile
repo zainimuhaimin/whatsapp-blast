@@ -1,5 +1,10 @@
 FROM node:24-alpine
 
+# git WAJIB ada: npm butuh git untuk dependency Baileys via git URL
+# (libsignal-node dari github.com/whiskeysockets) — tanpa ini build
+# gagal dengan "npm error syscall spawn git / ENOENT".
+RUN apk add --no-cache git
+
 WORKDIR /app
 
 COPY package.json package-lock.json* ./
