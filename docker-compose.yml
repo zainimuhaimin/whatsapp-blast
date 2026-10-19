@@ -1,0 +1,106 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: wa
+      POSTGRES_PASSWORD: wa
+      POSTGRES_DB: wablast
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U wa"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build: ./backend
+    env_file:
+      - ./backend/.env
+    environment:
+      DATABASE_URL: postgresql+psycopg2://wa:wa@postgres:5432/wablast
+      REDIS_URL: redis://redis:6379/0
+      BAILEYS_API_URL: http://baileys:3001
+      # Catatan: BAILEYS_API_KEY sengaja TIDAK di-override di sini —
+      # nilainya diambil dari env_file (./backend/.env), satu-satunya sumber.
+      # ${...} interpolasi compose membaca shell, bukan env_file, jadi override
+      # eksplisit di sini justru menimpa nilai user dengan string kosong.
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker:
+    build: ./backend
+    env_file:
+      - ./backend/.env
+    environment:
+      DATABASE_URL: postgresql+psycopg2://wa:wa@postgres:5432/wablast
+      REDIS_URL: redis://redis:6379/0
+      BAILEYS_API_URL: http://baileys:3001
+    command: celery -A app.worker.celery_app worker -Q wa_sender,default --concurrency=1 --loglevel=info
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  beat:
+    build: ./backend
+    env_file:
+      - ./backend/.env
+    environment:
+      DATABASE_URL: postgresql+psycopg2://wa:wa@postgres:5432/wablast
+      REDIS_URL: redis://redis:6379/0
+      BAILEYS_API_URL: http://baileys:3001
+    command: celery -A app.worker.celery_app beat --loglevel=info
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # Baileys sidecar: WhatsApp Web API tidak resmi (self-hosted, gratis).
+  # Pairing: buka http://localhost:3001/qr lalu scan QR dari HP testing.
+  # JANGAN pakai nomor WA utama (risiko banned).
+  baileys:
+    build: ./baileys
+    env_file:
+      - ./backend/.env # satu-satunya sumber BAILEYS_API_KEY (lihat catatan di service api)
+    environment:
+      PORT: 3001
+      # Catatan: BAILEYS_API_KEY sengaja TIDAK di-override di sini —
+      # nilainya diambil dari env_file agar cocok dengan key yang dibaca backend.
+    ports:
+      - "3001:3001"
+    volumes:
+      - baileys_auth:/app/auth_info
+    restart: unless-stopped
+
+  # Frontend: Dockerfile dibuat agent lain; service didefinisikan di sini
+  # agar `docker compose up` menjalankan seluruh stack sekaligus.
+  frontend:
+    build: ./frontend
+    ports:
+      - "5173:80" # nginx di container listen port 80; ekspos sebagai 5173 di host
+    depends_on:
+      - api
+
+volumes:
+  pgdata:
+  redisdata:
+  baileys_auth:

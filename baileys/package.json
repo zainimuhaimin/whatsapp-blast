@@ -1,0 +1,1 @@
+{"dependencies":{"@whiskeysockets/baileys":"^6.7.18","express":"^4.21.2","pino":"^9.6.0","qrcode":"^1.5.4"},"description":"Sidecar Baileys (WhatsApp Web API, tidak resmi) untuk tool blast WA — self-hosted, gratis.","license":"MIT","main":"server.js","name":"wa-blast-baileys","private":true,"scripts":{"start":"node server.js"},"version":"0.1.0"}

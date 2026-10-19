@@ -1,0 +1,67 @@
+@import "tailwindcss";
+
+:root {
+  color-scheme: light;
+}
+
+body {
+  @apply bg-slate-100 text-slate-800 antialiased;
+}
+
+/* Scrollbar halus untuk area scroll (mis. tabel review) */
+.thin-scroll::-webkit-scrollbar {
+  height: 8px;
+  width: 8px;
+}
+.thin-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.thin-scroll::-webkit-scrollbar-thumb {
+  @apply bg-slate-300 rounded-full;
+}
+
+/* Chat bubble untuk preview pesan WhatsApp */
+.wa-bubble {
+  @apply relative rounded-xl bg-[#dcf8c6] text-slate-800 px-4 py-3 shadow-sm;
+  max-width: 100%;
+}
+.wa-bubble::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: -8px;
+  border: 8px solid transparent;
+  border-top-color: #dcf8c6;
+  border-right: 0;
+}
+
+/* Animasi toast */
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.toast-in {
+  animation: toast-in 0.18s ease-out;
+}
+
+/* Field form standar */
+.field-label {
+  @apply block text-sm font-medium text-slate-700 mb-1;
+}
+.field-input {
+  @apply w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm
+    focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500
+    disabled:bg-slate-100 disabled:text-slate-400;
+}
+.field-hint {
+  @apply mt-1 text-xs text-slate-500;
+}
+.field-error {
+  @apply mt-1 text-xs text-red-600;
+}
