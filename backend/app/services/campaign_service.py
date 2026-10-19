@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.models import (
     Campaign,
     CampaignRecipient,
+    CampaignRecipientVariable,
     CampaignVariableMapping,
     Contact,
     Setting,
@@ -198,9 +199,36 @@ def build_review(db: Session, campaign: Campaign) -> dict:
         .all()
     )
 
+    # Variabel yang terisi dari override per-penerima (hasil AI di langkah 3)
+    # tidak punya baris mapping — tandai sumbernya "ai" agar review tidak crash
+    # (source None gagal validasi skema MappingOut).
+    ai_filled_vars = {
+        row[0]
+        for row in (
+            db.query(CampaignRecipientVariable.variable_name)
+            .join(
+                CampaignRecipient,
+                CampaignRecipientVariable.recipient_id == CampaignRecipient.id,
+            )
+            .filter(CampaignRecipient.campaign_id == campaign.id)
+            .distinct()
+            .all()
+        )
+    }
+
     variables_rows = []
     for var in version.variables:
         m = mappings.get(var)
+        if m:
+            source, contact_field, campaign_value = m.source, m.contact_field, (
+                m.value if m.source == "campaign" else None
+            )
+        elif var in ai_filled_vars:
+            source, contact_field, campaign_value = "ai", None, None
+        else:
+            # Defensif: seharusnya tidak terjadi karena validasi langkah 4
+            # mewajibkan tiap variabel punya mapping atau nilai AI.
+            source, contact_field, campaign_value = "campaign", None, ""
         sample_values = []
         for r in recipients:
             vals = resolve_values(db, campaign, r)
@@ -210,9 +238,9 @@ def build_review(db: Session, campaign: Campaign) -> dict:
         variables_rows.append(
             {
                 "variable_name": var,
-                "source": m.source if m else None,
-                "contact_field": m.contact_field if m else None,
-                "campaign_value": m.value if m and m.source == "campaign" else None,
+                "source": source,
+                "contact_field": contact_field,
+                "campaign_value": campaign_value,
                 "sample_values": sample_values[:5],
             }
         )

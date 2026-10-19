@@ -872,7 +872,7 @@ onMounted(async () => {
               </tbody>
             </table>
           </div>
-          <div class="tbl-foot">Baris tanpa nomor valid tidak ikut disimpan. Kontak baru otomatis dibuat; kontak lama dikenali dari nomornya.</div>
+          <div class="tbl-foot">Dengan menekan tombol di bawah, Anda <b>menyetujui hasil ekstraksi &amp; rekomendasi mapping AI</b> di atas. Baris tanpa nomor valid tidak ikut disimpan. Kontak baru otomatis dibuat; kontak lama dikenali dari nomornya.</div>
         </div>
 
         <div v-if="aiRecItems.length" class="flex flex-wrap gap-2">
@@ -880,7 +880,7 @@ onMounted(async () => {
             <Icon name="plus" :size="14" /> Tambah baris manual
           </button>
           <button @click="applyAiRecipients" :disabled="aiRecApplying" class="btn btn-accent">
-            <Icon name="check" :size="15" /> {{ aiRecApplying ? 'Menyimpan…' : `Simpan sebagai penerima (${aiRecItems.filter(r => r.phone.trim()).length})` }}
+            <Icon name="check" :size="15" /> {{ aiRecApplying ? 'Menyimpan…' : `Setuju — gunakan hasil AI (${aiRecItems.filter(r => r.phone.trim()).length} penerima)` }}
           </button>
         </div>
 
