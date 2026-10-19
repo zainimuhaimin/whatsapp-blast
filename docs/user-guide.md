@@ -159,7 +159,17 @@ Buka detail campaign untuk melihat:
 
 - **Ringkasan status:** berapa `pending` (antri), `sent` (terkirim ke provider), `delivered` (sampai ke HP penerima), `read` (dibaca), `failed` (gagal).
 - **Tabel per penerima:** status tiap nomor + pesan error terakhir bila gagal. Pesan gagal akan **di-retry otomatis** (maks 3x dengan jeda makin lama: 5 menit → 30 menit → 2 jam).
+- **Retry manual per penerima:** tombol panah-melengkung di baris yang berstatus `failed` untuk mencoba kirim ulang ke nomor itu saja (dengan konfirmasi). Bila campaign sudah selesai, ia otomatis diantrekan lagi.
 - **Kontrol:** **Pause** untuk menjeda, **Resume** untuk lanjut, **Cancel** untuk membatalkan (sisa yang belum terkirim tidak jadi dikirim).
+
+### Kelola campaign di Dashboard
+
+Daftar campaign di Dashboard punya kolom aksi untuk campaign berstatus **draft**:
+
+- **Edit** (ikon pensil) — lanjutkan draft di wizard dari awal, semua isian sebelumnya tetap ada.
+- **Hapus** (ikon tong sampah) — hapus draft beserta data penerima & mapping-nya (konfirmasi dulu). Campaign yang sudah dikirim tidak bisa dihapus (pakai **Cancel** bila perlu dihentikan).
+
+> Versi backend yang sedang berjalan tampil kecil di bawah sidebar (`backend <versi>`). Setelah `git pull`, pastikan `docker compose up -d --build` agar backend ikut terbaru — bila tidak, fitur baru tidak akan jalan walau tampilan sudah berubah.
 
 ## 8. Nomor Test (Test Numbers)
 
