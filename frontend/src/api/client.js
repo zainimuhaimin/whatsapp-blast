@@ -181,6 +181,13 @@ export const auditLogsApi = {
   list: (q = {}) => http.get('/audit-logs', params(q)).then(unwrapPage),
 }
 
+export const metaApi = {
+  // Versi backend — ditampilkan di footer sidebar agar mudah memastikan
+  // backend yang berjalan sudah yang terbaru setelah git pull + rebuild.
+  // Dibuat silent agar tidak memicu toast bila backend mati.
+  version: () => http.get('/version', { silent: true }).then((r) => r.data).catch(() => null),
+}
+
 /* --------------------------- registrasi handler -------------------------- */
 
 // Pasang handler toast error global sekali saat modul dipakai pertama kali.

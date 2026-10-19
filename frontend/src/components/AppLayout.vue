@@ -5,7 +5,7 @@
  */
 import { ref, computed, onMounted, watch } from 'vue'
 import { RouterLink, useRouter, useRoute } from 'vue-router'
-import { authApi, settingsApi } from '../api/client'
+import { authApi, metaApi, settingsApi } from '../api/client'
 import { useAuth } from '../stores/useAuth'
 import { useToast } from '../stores/useToast'
 import Icon from './Icon.vue'
@@ -17,6 +17,14 @@ const { user, clear } = useAuth()
 const toast = useToast()
 const menuOpen = ref(false)
 const provider = ref('')
+const backendVersion = ref('')
+
+onMounted(async () => {
+  // Tampilkan versi backend di footer — memudahkan memastikan backend
+  // sudah di-rebuild setelah git pull (frontend update duluan via npm run dev).
+  const v = await metaApi.version()
+  if (v?.backend_version) backendVersion.value = v.backend_version
+})
 
 // Kunci scroll body saat menu sheet terbuka (mobile)
 watch(menuOpen, (open) => {
@@ -103,6 +111,9 @@ onMounted(async () => {
         <button @click="logout" class="btn-tertiary logout-btn">
           <Icon name="logout" :size="15" /> Keluar
         </button>
+        <div v-if="backendVersion" class="backend-ver" :title="'Versi backend yang sedang berjalan'">
+          backend {{ backendVersion }}
+        </div>
       </div>
     </aside>
 
@@ -213,6 +224,10 @@ onMounted(async () => {
   padding: 12px 12px 16px;
 }
 .user-row { display: flex; align-items: center; gap: 10px; padding: 4px 8px 10px; }
+.backend-ver {
+  margin-top: 8px; padding: 0 8px;
+  font-size: 11px; color: var(--faint);
+}
 .user-avatar {
   width: 28px; height: 28px; border-radius: 50%;
   background: var(--accent-soft); color: var(--accent-ink);
