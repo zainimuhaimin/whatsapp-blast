@@ -157,6 +157,8 @@ export const campaignsApi = {
   stats: (id) => http.get(`/campaigns/${id}/stats`).then((r) => r.data),
   messages: (id, q = {}) =>
     http.get(`/campaigns/${id}/messages`, params(q)).then(unwrapPage),
+  chatLinks: (id, q = {}) =>
+    http.get(`/campaigns/${id}/chat-links`, params(q)).then(unwrapPage),
 }
 
 /* ------------------------------ test numbers ---------------------------- */
@@ -181,6 +183,22 @@ export const settingsApi = {
 
 export const auditLogsApi = {
   list: (q = {}) => http.get('/audit-logs', params(q)).then(unwrapPage),
+}
+
+/* ------------------------------ file uploads ---------------------------- */
+
+export const fileUploadsApi = {
+  parse: (file) => {
+    const fd = new FormData()
+    fd.append('file', file)
+    return http.post('/file-uploads/parse', fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }).then((r) => r.data)
+  },
+  preview: (uploadId, payload) =>
+    http.post(`/file-uploads/${uploadId}/preview`, payload).then((r) => r.data),
+  createCampaign: (uploadId, payload) =>
+    http.post(`/file-uploads/${uploadId}/create-campaign`, payload).then((r) => r.data),
 }
 
 export const metaApi = {

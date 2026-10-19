@@ -136,6 +136,46 @@ def retry_recipient(campaign_id: UUID, recipient_id: UUID, request: Request,
             "status": "pending", "requeued": requeued}
 
 
+@router.get("/{campaign_id}/chat-links")
+def chat_links(campaign_id: UUID,
+               page: int = Query(default=1, ge=1),
+               limit: int = Query(default=50, ge=1, le=200),
+               db: Session = Depends(get_db),
+               user: User = Depends(get_current_user)):
+    """
+    Daftar link wa.me per penerima — kirim manual yang aman (tanpa otomasi).
+    Tiap link membuka WhatsApp dengan pesan yang sudah di-render untuk
+    penerima tersebut; user tinggal tekan kirim di aplikasi WA.
+    """
+    from urllib.parse import quote
+
+    campaign = _get_campaign_or_404(db, campaign_id)
+    q = (
+        db.query(CampaignRecipient)
+        .filter(CampaignRecipient.campaign_id == campaign.id)
+        .order_by(CampaignRecipient.created_at)
+    )
+    total = q.count()
+    items = q.offset((page - 1) * limit).limit(limit).all()
+    out = []
+    for r in items:
+        message = campaign_service.render_for_recipient(db, campaign, r)
+        # wa.me butuh digit internasional tanpa '+'
+        phone_digits = "".join(ch for ch in (r.phone or "") if ch.isdigit())
+        wa_url = f"https://wa.me/{phone_digits}?text={quote(message)}" if phone_digits else None
+        name = r.contact.name if r.contact_id and r.contact else None
+        out.append({
+            "recipient_id": str(r.id),
+            "phone": r.phone,
+            "name": name,
+            "status": r.status,
+            "message": message,
+            "wa_url": wa_url,
+        })
+    pages = (total + limit - 1) // limit if total else 0
+    return {"items": out, "meta": PageMeta(page=page, limit=limit, total=total, pages=pages)}
+
+
 @router.get("")
 def list_campaigns(
     status: str | None = Query(default=None),

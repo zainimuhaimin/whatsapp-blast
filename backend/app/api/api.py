@@ -6,6 +6,7 @@ from app.api.routers import (
     auth,
     campaigns,
     contacts,
+    file_uploads,
     sender,
     settings,
     templates,
@@ -18,6 +19,7 @@ api_router.include_router(auth.router)
 api_router.include_router(contacts.router)
 api_router.include_router(templates.router)
 api_router.include_router(campaigns.router)
+api_router.include_router(file_uploads.router)
 api_router.include_router(test_numbers.router)
 api_router.include_router(settings.router)
 api_router.include_router(audit_logs.router)
@@ -26,7 +28,7 @@ api_router.include_router(sender.router)
 
 # Versi backend — naikkan setiap ada perubahan backend agar mudah
 # memastikan backend yang berjalan sudah yang terbaru (lihat footer UI).
-APP_VERSION = "2026-10-19f"
+APP_VERSION = "2026-10-19g"
 
 
 @api_router.get("/version", include_in_schema=False)

@@ -296,3 +296,27 @@ class Setting(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+
+class FileUpload(Base):
+    """
+    Hasil parse file upload (CSV/XLSX) untuk blast dari file.
+    Baris disimpan sebagai JSON dengan key = nama variabel ternormalisasi.
+    """
+    __tablename__ = "file_uploads"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    # [{"header": "Nama Lengkap", "variable": "nama_lengkap"}]
+    columns: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    # [{"nama_lengkap": "...", "no_hp": "..."}, ...]
+    rows: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    row_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id"), nullable=True
+    )
+    created_at: Mapped[datetime] = _now()
+
+    __table_args__ = (
+        Index("idx_file_uploads_created", text("created_at DESC")),
+    )

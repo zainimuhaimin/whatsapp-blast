@@ -43,6 +43,12 @@ const routes = [
         meta: { title: 'Detail Campaign', parent: 'Campaign' },
       },
       {
+        path: 'file-blast',
+        name: 'file-blast',
+        component: () => import('../views/FileBlastView.vue'),
+        meta: { title: 'Blast dari File' },
+      },
+      {
         path: 'test-numbers',
         name: 'test-numbers',
         component: () => import('../views/TestNumbersView.vue'),

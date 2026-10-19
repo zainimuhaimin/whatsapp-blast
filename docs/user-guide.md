@@ -199,6 +199,27 @@ Jalur resmi (Meta Cloud API) tidak butuh pairing — cukup pastikan kredensial v
 
 ---
 
+## 10. Blast dari File (CSV/Excel)
+
+Menu **Blast dari File** — untuk pesan yang tidak terpaku template: tulis pesan bebas, upload file data, header kolom otomatis jadi variabel.
+
+1. **Tulis pesan** — ketik bebas. Variabel ditulis `{{nama_variabel}}`.
+2. **Upload file** (.csv / .xlsx, maks 10 MB & 5000 baris) — baris pertama dianggap header. Contoh header `Nama Lengkap` otomatis menjadi variabel `{{nama_lengkap}}`; klik chip variabel untuk menempelkannya di posisi kursor. Pilih **kolom nomor telepon** (biasanya terdeteksi otomatis).
+3. **Preview** — render 5 baris pertama; baris bernomor tidak valid otomatis dilewati (dilaporkan jumlahnya).
+4. **Buat campaign** — isi nama, pilih jalur & mode test → campaign draft dibuat (beserta template-nya) dan Anda diarahkan ke halaman **review** seperti biasa untuk konfirmasi sebelum kirim.
+
+Tiap baris file = 1 penerima; kolom selain nomor telepon menjadi nilai variabel per penerima (bisa diedit di langkah Mapping wizard).
+
+## 11. Kirim Manual via WhatsApp (wa.me)
+
+Cara paling aman tanpa risiko banned otomasi: di **detail campaign**, buka seksi **Kirim manual via WhatsApp** → klik **Buka di WhatsApp** per penerima. WhatsApp terbuka (HP/desktop) dengan pesan yang sudah ter-render untuk penerima tersebut — tinggal tekan kirim di aplikasi.
+
+- Tidak perlu Baileys terhubung, tidak perlu kredensial Meta.
+- Cocok untuk batch kecil/sensitif atau saat jalur otomatis bermasalah.
+- Link berbentuk `wa.me/<nomor>?text=<pesan>` — nomor otomatis diformat internasional tanpa `+`.
+
+---
+
 ## Tips Anti-Banned
 
 1. **Hanya kirim ke yang sudah opt-in** — ini aturan nomor satu WhatsApp/Meta. Daftar beli/scrape = jalan tercepat menuju banned.

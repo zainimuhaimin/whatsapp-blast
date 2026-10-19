@@ -37,6 +37,7 @@ watch(() => route.fullPath, () => { menuOpen.value = false })
 const nav = [
   { to: '/', label: 'Dashboard', icon: 'grid', end: true },
   { to: '/campaigns/new', label: 'Campaign Baru', icon: 'send' },
+  { to: '/file-blast', label: 'Blast dari File', icon: 'upload' },
   { to: '/contacts', label: 'Kontak', icon: 'users' },
   { to: '/templates', label: 'Template', icon: 'chat' },
   { to: '/test-numbers', label: 'Nomor Test', icon: 'flask' },

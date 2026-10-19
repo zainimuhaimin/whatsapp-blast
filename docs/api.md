@@ -50,6 +50,8 @@ Sumber desain: `architecture.md` §3. Detail skema request/response final mengik
 | PUT | `/api/campaigns/{id}/mappings` | Simpan mapping hasil edit manual | **Wajib** sebelum review |
 | POST | `/api/campaigns/{id}/recipients` | Bangun daftar penerima | `{contact_ids[]}` — blacklist & duplikat nomor otomatis dilewati; mode test → pakai `test_numbers` aktif |
 | GET | `/api/campaigns/{id}/recipients` | List penerima + status kirim | Query: `status`, `page` |
+| POST | `/api/campaigns/{id}/recipients/{rid}/retry` | Retry manual 1 penerima gagal | Reset ke `pending`; campaign `completed` → `queued` + trigger dispatch |
+| GET | `/api/campaigns/{id}/chat-links` | Link wa.me per penerima (kirim manual) | Query: `page`, `limit` → `{phone, name, message, wa_url}` |
 | GET | `/api/campaigns/{id}/review` | Payload halaman review | Total penerima, tabel variabel × nilai, sample 5 pesan ter-render, estimasi durasi & biaya, daftar error validasi |
 | POST | `/api/campaigns/{id}/confirm` | Konfirmasi & mulai blast | Validasi penuh → `queued` (atau `scheduled` bila `send_at` di masa depan) → enqueue dispatch; audit `campaign.confirm_blast` |
 | POST | `/api/campaigns/{id}/pause` | Jeda pengiriman | Status → `paused` |
@@ -70,6 +72,14 @@ Sumber desain: `architecture.md` §3. Detail skema request/response final mengik
 | POST | `/api/test-numbers` | Tambah nomor test | `{label, phone}` |
 | PUT | `/api/test-numbers/{id}` | Update nomor test | `{label?, phone?, is_active?}` |
 | DELETE | `/api/test-numbers/{id}` | Hapus nomor test | — |
+
+## File Uploads — Blast dari File
+
+| Method | Path | Deskripsi | Body / Catatan |
+|---|---|---|---|
+| POST | `/api/file-uploads/parse` | Upload & parse CSV/XLSX | Multipart `file`; header → variabel ternormalisasi; maks 10 MB / 5000 baris |
+| POST | `/api/file-uploads/{id}/preview` | Preview render 5 baris | `{message, phone_variable}` → pesan ter-render + `unknown_variables` + `skipped_rows` |
+| POST | `/api/file-uploads/{id}/create-campaign` | Buat campaign dari file | `{name, message, phone_variable, provider, is_test_mode}` → template + campaign draft + recipients + override per baris |
 
 ## Settings & Audit
 

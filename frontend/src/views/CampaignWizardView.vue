@@ -634,6 +634,12 @@ onMounted(async () => {
       form.value.provider = c.provider || 'official'
       form.value.is_test_mode = !!c.is_test_mode
       form.value.send_at = c.send_at ? new Date(c.send_at).toISOString().slice(0, 16) : ''
+      // Lompat ke langkah tertentu (mis. dari Blast File langsung ke review)
+      const targetStep = parseInt(route.query.step || '0', 10)
+      if (targetStep === 6) {
+        step.value = 6
+        await loadReview()
+      }
     } catch { /* abaikan, mulai wizard baru */ }
   }
 })

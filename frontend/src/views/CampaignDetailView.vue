@@ -35,6 +35,14 @@ const msgPage = ref(1)
 const confirmAction = ref(null) // 'pause' | 'resume' | 'cancel'
 const retryTarget = ref(null) // recipient yang akan di-retry
 const acting = ref(false)
+
+// Kirim manual via wa.me (tanpa otomasi — paling aman dari banned)
+const chatLinks = ref([])
+const chatTotal = ref(0)
+const chatLoading = ref(false)
+const chatPage = ref(1)
+const chatLimit = 20
+const showChatLinks = ref(false)
 let pollTimer = null
 
 const STATUS_FILTERS = [
@@ -139,6 +147,24 @@ async function doRetryRecipient() {
   } finally {
     acting.value = false
   }
+}
+
+async function loadChatLinks() {
+  chatLoading.value = true
+  try {
+    const { items, total } = await campaignsApi.chatLinks(id, {
+      page: chatPage.value, limit: chatLimit,
+    })
+    chatLinks.value = items
+    chatTotal.value = total
+  } finally {
+    chatLoading.value = false
+  }
+}
+
+async function toggleChatLinks() {
+  showChatLinks.value = !showChatLinks.value
+  if (showChatLinks.value && !chatLinks.value.length) await loadChatLinks()
 }
 
 onMounted(async () => {
@@ -294,6 +320,49 @@ onUnmounted(() => {
         </template>
       </DataTable>
       <Pagination v-if="msgTotal > recLimit" :page="msgPage" :limit="recLimit" :total="msgTotal" @change="(p) => { msgPage = p; loadMessages() }" />
+    </div>
+
+    <!-- Kirim manual via WhatsApp (wa.me) -->
+    <div class="tbl-wrap mt-4">
+      <div class="tbl-title-row">
+        <h2 class="section-title">Kirim manual via WhatsApp</h2>
+        <button @click="toggleChatLinks" class="btn btn-secondary text-sm">
+          <Icon name="chat" :size="14" /> {{ showChatLinks ? 'Sembunyikan' : 'Tampilkan' }}
+        </button>
+      </div>
+      <div v-if="showChatLinks">
+        <p class="card-label mb-3">
+          Cara paling aman tanpa risiko banned otomasi: klik <b>Buka di WhatsApp</b> per penerima —
+          WhatsApp terbuka dengan pesan yang sudah ter-render, tinggal tekan kirim di aplikasi.
+          Tidak perlu Baileys terhubung.
+        </p>
+        <DataTable :loading="chatLoading" empty-title="Belum ada penerima" empty-hint="Tambahkan penerima lewat wizard campaign.">
+          <template #head>
+            <th>Penerima</th>
+            <th>Status</th>
+            <th>Pesan</th>
+            <th><span class="sr-only">Aksi</span></th>
+          </template>
+          <template v-if="chatLinks.length">
+            <tr v-for="l in chatLinks" :key="l.recipient_id" class="align-top">
+              <td class="whitespace-nowrap">
+                <div class="row-title text-sm">{{ l.name || '–' }}</div>
+                <div class="mono text-xs card-label">{{ l.phone }}</div>
+              </td>
+              <td><StatusPill :status="l.status" /></td>
+              <td class="text-sm max-w-md">
+                <div class="whitespace-pre-wrap break-words">{{ truncate(l.message, 200) }}</div>
+              </td>
+              <td class="whitespace-nowrap">
+                <a :href="l.wa_url" target="_blank" rel="noopener" class="btn btn-secondary text-sm">
+                  <Icon name="external" :size="14" /> Buka di WhatsApp
+                </a>
+              </td>
+            </tr>
+          </template>
+        </DataTable>
+        <Pagination v-if="chatTotal > chatLimit" :page="chatPage" :limit="chatLimit" :total="chatTotal" @change="(p) => { chatPage = p; loadChatLinks() }" />
+      </div>
     </div>
 
     <ConfirmDialog

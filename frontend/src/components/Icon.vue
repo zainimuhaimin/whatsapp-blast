@@ -46,6 +46,8 @@ const paths = {
   pause: '<path d="M8 5v14M16 5v14"/>',
   zap: '<path d="M13 2 4.5 13.5H11L9.5 22 19 10h-6.5z"/>',
   calendar: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
+  upload: '<path d="M12 16V4"/><path d="m6 10 6-6 6 6"/><path d="M4 20h16"/>',
+  eye: '<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/>',
 }
 
 const svg = computed(() => paths[props.name] || paths.info)

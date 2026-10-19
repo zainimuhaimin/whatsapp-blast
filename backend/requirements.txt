@@ -13,3 +13,4 @@ google-generativeai
 httpx
 phonenumbers
 python-multipart
+openpyxl
