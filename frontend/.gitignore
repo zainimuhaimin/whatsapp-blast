@@ -22,3 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Ikon PWA (PNG) di-generate saat build via public/icons/generate-icons.py
+public/icons/*.png

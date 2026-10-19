@@ -2,11 +2,11 @@
 import { ref, computed, onMounted } from 'vue'
 import { settingsApi } from '../api/client'
 import { useToast } from '../stores/useToast'
+import Icon from '../components/Icon.vue'
 
 const toast = useToast()
 const entries = ref([]) // [{key, value, is_secret, updated_at}]
 const loading = ref(false)
-const search = ref('')
 const editingKey = ref(null)
 const draftValue = ref('')
 const draftError = ref('')
@@ -65,7 +65,7 @@ async function saveGeminiKey() {
     if (e) e.value = updated.value
     keyInput.value = ''
     keyEditing.value = false
-    toast.success('API key Gemini tersimpan ✓')
+    toast.success('API key Gemini tersimpan.')
   } finally {
     keySaving.value = false
   }
@@ -78,7 +78,7 @@ async function clearGeminiKey() {
     const e = geminiKeyEntry.value
     if (e) e.value = updated.value
     keyEditing.value = false
-    toast.success('API key dihapus — kembali memakai GEMINI_API_KEY dari environment (bila ada).')
+    toast.success('API key dihapus. Kembali memakai GEMINI_API_KEY dari environment (bila ada).')
   } finally {
     keySaving.value = false
   }
@@ -95,7 +95,7 @@ async function saveGeminiModel() {
     await settingsApi.update('gemini.model', v)
     const e = geminiModelEntry.value
     if (e) e.value = v
-    toast.success(`Model Gemini diubah ke "${v}" ✓`)
+    toast.success(`Model Gemini diubah ke "${v}".`)
   } finally {
     modelSaving.value = false
   }
@@ -143,13 +143,10 @@ function metaFor(key) {
   return KEY_META[key] || { label: key, desc: 'Pengaturan operasional', type: 'json' }
 }
 
-const filtered = computed(() => {
-  const q = search.value.trim().toLowerCase()
+const filtered = computed(() =>
   // gemini.api_key & gemini.model dikelola di section AI khusus di atas
-  return entries.value.filter(
-    (e) => !AI_KEYS.includes(e.key) && (!q || e.key.toLowerCase().includes(q))
-  )
-})
+  entries.value.filter((e) => !AI_KEYS.includes(e.key))
+)
 
 async function load() {
   loading.value = true
@@ -217,136 +214,162 @@ onMounted(load)
 </script>
 
 <template>
-  <div class="max-w-4xl">
-    <div class="mb-6">
-      <h1 class="text-2xl font-bold">Pengaturan</h1>
-      <p class="text-sm text-slate-500">Konfigurasi operasional. API key AI tidak pernah ditampilkan utuh & tidak masuk audit log.</p>
+  <div class="settings-col">
+    <div class="mb-8">
+      <h1 class="page-title">Pengaturan</h1>
+      <p class="page-sub">Konfigurasi operasional. API key AI tidak pernah ditampilkan utuh & tidak masuk audit log.</p>
     </div>
 
-    <!-- ============ AI: Google Gemini (Google AI Studio) ============ -->
-    <div class="bg-white rounded-xl border border-slate-200 p-5 mb-6">
-      <div class="flex flex-wrap items-center justify-between gap-3 mb-1">
-        <h2 class="text-lg font-semibold">🤖 AI — Google Gemini</h2>
-        <button
-          @click="testGemini"
-          :disabled="testLoading"
-          class="px-3 py-1.5 text-sm rounded-lg border border-slate-300 hover:bg-slate-50 disabled:opacity-50"
-        >
-          {{ testLoading ? 'Mengetes…' : '🔌 Test koneksi' }}
-        </button>
-      </div>
-      <p class="text-xs text-slate-500 mb-4">
-        Dipakai untuk ekstraksi variabel AI di wizard campaign. Ambil API key gratis di
-        <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" class="text-emerald-700 underline">Google AI Studio → Get API Key</a>.
-        Kosongkan key untuk kembali memakai <code class="font-mono">GEMINI_API_KEY</code> dari environment.
-      </p>
+    <div v-if="loading" class="card-label text-center py-10">Memuat pengaturan…</div>
 
-      <div v-if="testResult" class="mb-4 text-sm rounded-lg px-3 py-2 border"
-           :class="testResult.ok ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-red-50 border-red-200 text-red-800'">
-        <span v-if="testResult.ok">✅ Koneksi OK — model <b class="font-mono">{{ testResult.model }}</b> (sumber: {{ testResult.source }}) merespons: “{{ testResult.reply }}”</span>
-        <span v-else>❌ Gagal — model <b class="font-mono">{{ testResult.model }}</b> (sumber: {{ testResult.source }}): {{ testResult.error }}</span>
-      </div>
-
-      <div class="grid md:grid-cols-2 gap-5">
-        <div>
-          <label class="field-label">API Key</label>
-          <div v-if="geminiKeySet && !keyEditing" class="flex flex-wrap items-center gap-2">
-            <code class="font-mono text-sm bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">{{ geminiKeyEntry.value }}</code>
-            <span class="text-xs text-emerald-700 font-medium">tersimpan ✓</span>
-            <button @click="keyEditing = true; keyInput = ''" class="text-sm text-emerald-700 underline">Ganti</button>
-            <button @click="clearGeminiKey" :disabled="keySaving" class="text-sm text-red-600 underline disabled:opacity-50">Hapus</button>
-          </div>
-          <div v-else class="flex flex-wrap gap-2">
-            <input v-model="keyInput" type="password" placeholder="Tempel API key dari AI Studio…" class="field-input font-mono !w-72" autocomplete="off" />
-            <button @click="saveGeminiKey" :disabled="keySaving || !keyInput.trim()" class="btn-primary disabled:opacity-50">
-              {{ keySaving ? 'Menyimpan…' : 'Simpan' }}
-            </button>
-            <button v-if="geminiKeySet" @click="keyEditing = false; keyInput = ''" class="px-3 py-2 text-sm rounded-lg border border-slate-300 hover:bg-slate-50">Batal</button>
-          </div>
-          <p v-if="!geminiKeySet && !keyEditing" class="text-xs text-amber-700 mt-1.5">⚠️ Belum diatur — AI nonaktif sampai key diisi (atau via ENV).</p>
-        </div>
-
-        <div>
-          <label class="field-label">Model</label>
-          <div class="flex flex-wrap gap-2">
-            <select v-model="modelValue" class="field-input !w-56 font-mono text-sm">
-              <option v-for="m in GEMINI_MODELS" :key="m" :value="m">{{ m }}</option>
-              <option value="__custom">Kustom…</option>
-            </select>
-            <input v-if="isCustomModel" v-model="modelCustom" type="text" placeholder="nama-model-kustom" class="field-input font-mono text-sm !w-56" />
-            <button @click="saveGeminiModel" :disabled="modelSaving || !effectiveModel" class="btn-primary disabled:opacity-50">
-              {{ modelSaving ? 'Menyimpan…' : 'Simpan' }}
-            </button>
-          </div>
-          <p class="text-xs text-slate-500 mt-1.5">Model untuk ekstraksi variabel. <span class="font-mono">gemini-2.5-flash</span> cepat & murah untuk tugas ini.</p>
-        </div>
-      </div>
-    </div>
-
-    <div class="mb-4">
-      <input v-model="search" type="search" placeholder="🔍 Cari key…" class="field-input !w-64" />
-    </div>
-
-    <div v-if="loading" class="text-sm text-slate-500 text-center py-10">Memuat pengaturan…</div>
-    <div v-else-if="!filtered.length" class="text-sm text-slate-400 text-center py-10">Tidak ada pengaturan yang cocok.</div>
-
-    <div v-else class="space-y-3">
-      <div v-for="e in filtered" :key="e.key" class="bg-white rounded-xl border border-slate-200 p-4">
-        <div class="flex flex-wrap items-start justify-between gap-3">
-          <div class="min-w-0">
-            <div class="font-mono text-sm font-semibold text-emerald-800">{{ e.key }}</div>
-            <div class="text-sm font-medium mt-0.5">{{ metaFor(e.key).label }}</div>
-            <div class="text-xs text-slate-500">{{ metaFor(e.key).desc }}</div>
-          </div>
-          <button
-            v-if="editingKey !== e.key"
-            @click="startEdit(e)"
-            class="px-3 py-1.5 text-sm rounded-lg border border-slate-300 hover:bg-slate-50"
-          >
-            ✏️ Ubah
+    <template v-else>
+      <!-- ============ AI: Google Gemini ============ -->
+      <section class="setting-row">
+        <div class="setting-label">
+          <h2 class="setting-title">AI — Google Gemini</h2>
+          <p class="setting-desc">
+            Dipakai untuk ekstraksi variabel AI di wizard campaign. Ambil API key gratis di
+            <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" class="row-link">Google AI Studio</a>.
+            Kosongkan key untuk kembali memakai <code class="mono">GEMINI_API_KEY</code> dari environment.
+          </p>
+          <button @click="testGemini" :disabled="testLoading" class="btn btn-secondary btn-sm mt-3">
+            <Icon name="zap" :size="14" /> {{ testLoading ? 'Mengetes…' : 'Test koneksi' }}
           </button>
         </div>
+        <div class="setting-panel">
+          <div v-if="testResult" class="mb-4 text-sm rounded-lg px-3 py-2 border"
+               :class="testResult.ok ? 'alert-positive' : 'alert-negative'" style="display:block">
+            <span v-if="testResult.ok">Koneksi OK. Model <b class="mono">{{ testResult.model }}</b> (sumber: {{ testResult.source }}) merespons: “{{ testResult.reply }}”</span>
+            <span v-else>Gagal. Model <b class="mono">{{ testResult.model }}</b> (sumber: {{ testResult.source }}): {{ testResult.error }}</span>
+          </div>
 
-        <div v-if="editingKey !== e.key" class="mt-2">
-          <code class="text-sm bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 block break-all">{{ displayValue(e.value) }}</code>
-        </div>
+          <div class="ai-grid">
+            <div>
+              <label class="field-label">API key</label>
+              <div v-if="geminiKeySet && !keyEditing" class="key-set">
+                <code class="mono key-masked">{{ geminiKeyEntry.value }}</code>
+                <span class="pill pill-positive">tersimpan</span>
+                <button @click="keyEditing = true; keyInput = ''" class="btn-tertiary text-sm">Ganti</button>
+                <button @click="clearGeminiKey" :disabled="keySaving" class="btn-tertiary text-sm" style="color: var(--negative)">Hapus</button>
+              </div>
+              <div v-else class="key-edit">
+                <input v-model="keyInput" type="password" placeholder="Tempel API key dari AI Studio…" class="field-input mono" autocomplete="off" />
+                <div class="key-actions">
+                  <button @click="saveGeminiKey" :disabled="keySaving || !keyInput.trim()" class="btn btn-accent btn-sm">
+                    {{ keySaving ? 'Menyimpan…' : 'Simpan' }}
+                  </button>
+                  <button v-if="geminiKeySet" @click="keyEditing = false; keyInput = ''" class="btn btn-secondary btn-sm">Batal</button>
+                </div>
+              </div>
+              <p v-if="!geminiKeySet && !keyEditing" class="field-hint" style="color: var(--warning)">Belum diatur. AI nonaktif sampai key diisi (atau via ENV).</p>
+            </div>
 
-        <div v-else class="mt-3 space-y-2">
-          <select
-            v-if="metaFor(e.key).type === 'select'"
-            v-model="draftValue"
-            class="field-input !w-auto"
-          >
-            <option v-for="o in metaFor(e.key).options" :key="o" :value="o">{{ o }}</option>
-          </select>
-          <input
-            v-else-if="metaFor(e.key).type === 'number' || metaFor(e.key).type === 'text'"
-            v-model="draftValue"
-            :type="metaFor(e.key).type === 'number' ? 'number' : 'text'"
-            class="field-input"
-          />
-          <textarea
-            v-else
-            v-model="draftValue"
-            rows="4"
-            class="field-input font-mono text-sm"
-            placeholder='{"marketing": 627.33}'
-          ></textarea>
-          <div v-if="draftError" class="field-error">{{ draftError }}</div>
-          <div class="flex gap-2">
-            <button
-              @click="saveEdit(e)"
-              :disabled="saving"
-              class="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium disabled:opacity-50"
-            >
-              {{ saving ? 'Menyimpan…' : 'Simpan' }}
-            </button>
-            <button @click="cancelEdit" class="px-4 py-2 rounded-lg border border-slate-300 text-sm font-medium hover:bg-slate-50">
-              Batal
-            </button>
+            <div>
+              <label class="field-label">Model</label>
+              <div class="key-edit">
+                <select v-model="modelValue" class="field-input mono text-sm">
+                  <option v-for="m in GEMINI_MODELS" :key="m" :value="m">{{ m }}</option>
+                  <option value="__custom">Kustom…</option>
+                </select>
+                <input v-if="isCustomModel" v-model="modelCustom" type="text" placeholder="nama-model-kustom" class="field-input mono text-sm" />
+                <div class="key-actions">
+                  <button @click="saveGeminiModel" :disabled="modelSaving || !effectiveModel" class="btn btn-accent btn-sm">
+                    {{ modelSaving ? 'Menyimpan…' : 'Simpan' }}
+                  </button>
+                </div>
+              </div>
+              <p class="field-hint"><span class="mono">gemini-2.5-flash</span> cepat & murah untuk ekstraksi variabel.</p>
+            </div>
           </div>
         </div>
-      </div>
-    </div>
+      </section>
+
+      <!-- ============ Pengaturan operasional ============ -->
+      <section v-for="e in filtered" :key="e.key" class="setting-row">
+        <div class="setting-label">
+          <h2 class="setting-title">{{ metaFor(e.key).label }}</h2>
+          <p class="setting-desc">{{ metaFor(e.key).desc }}</p>
+          <code class="mono setting-key">{{ e.key }}</code>
+        </div>
+        <div class="setting-panel">
+          <template v-if="editingKey !== e.key">
+            <div class="setting-value">
+              <code class="mono value-code">{{ displayValue(e.value) }}</code>
+              <button @click="startEdit(e)" class="btn btn-secondary btn-sm">
+                <Icon name="pencil" :size="13" /> Ubah
+              </button>
+            </div>
+          </template>
+          <template v-else>
+            <select
+              v-if="metaFor(e.key).type === 'select'"
+              v-model="draftValue"
+              class="field-input w-auto"
+            >
+              <option v-for="o in metaFor(e.key).options" :key="o" :value="o">{{ o }}</option>
+            </select>
+            <input
+              v-else-if="metaFor(e.key).type === 'number' || metaFor(e.key).type === 'text'"
+              v-model="draftValue"
+              :type="metaFor(e.key).type === 'number' ? 'number' : 'text'"
+              class="field-input"
+            />
+            <textarea
+              v-else
+              v-model="draftValue"
+              rows="4"
+              class="field-input mono text-sm"
+              placeholder='{"marketing": 627.33}'
+            ></textarea>
+            <div v-if="draftError" class="field-error">{{ draftError }}</div>
+            <div class="key-actions mt-3">
+              <button @click="saveEdit(e)" :disabled="saving" class="btn btn-accent btn-sm">
+                {{ saving ? 'Menyimpan…' : 'Simpan' }}
+              </button>
+              <button @click="cancelEdit" class="btn btn-secondary btn-sm">Batal</button>
+            </div>
+          </template>
+        </div>
+      </section>
+
+      <div v-if="!filtered.length" class="empty-inline">Tidak ada pengaturan operasional lain.</div>
+    </template>
   </div>
 </template>
+
+<style scoped>
+.settings-col { max-width: 1152px; margin: 0 auto; }
+.setting-row {
+  display: grid; gap: 16px;
+  padding: 32px 0;
+  border-top: 1px solid var(--border);
+}
+.setting-row:first-of-type { border-top: 0; padding-top: 0; }
+@media (min-width: 900px) {
+  .setting-row { grid-template-columns: 400px 1fr; gap: 32px; }
+}
+.setting-title { font-size: 16px; font-weight: 500; margin: 0; padding-top: 6px; }
+.setting-desc { font-size: 14px; color: var(--muted); margin: 6px 0 0; line-height: 21px; }
+.setting-key { display: inline-block; margin-top: 8px; font-size: 12px; color: var(--faint); }
+.setting-panel {
+  background: var(--raised);
+  border-radius: 16px;
+  padding: 16px;
+}
+.setting-value { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.value-code {
+  font-size: 13px; background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-control); padding: 8px 12px; display: block;
+  word-break: break-all; flex: 1;
+}
+.btn-sm { min-height: 32px; padding: 0 12px; font-size: 13px; }
+.ai-grid { display: grid; gap: 20px; }
+@media (min-width: 700px) { .ai-grid { grid-template-columns: 1fr 1fr; } }
+.key-set { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.key-masked {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-control); padding: 8px 12px; font-size: 13px;
+}
+.key-edit { display: grid; gap: 8px; }
+.key-actions { display: flex; gap: 8px; }
+</style>

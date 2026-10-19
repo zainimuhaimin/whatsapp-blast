@@ -34,13 +34,13 @@ const routes = [
         path: 'campaigns/new',
         name: 'campaign-new',
         component: () => import('../views/CampaignWizardView.vue'),
-        meta: { title: 'Campaign Baru' },
+        meta: { title: 'Campaign Baru', parent: 'Campaign' },
       },
       {
         path: 'campaigns/:id',
         name: 'campaign-detail',
         component: () => import('../views/CampaignDetailView.vue'),
-        meta: { title: 'Detail Campaign' },
+        meta: { title: 'Detail Campaign', parent: 'Campaign' },
       },
       {
         path: 'test-numbers',

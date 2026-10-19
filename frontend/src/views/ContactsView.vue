@@ -8,6 +8,7 @@ import Modal from '../components/Modal.vue'
 import StatusPill from '../components/StatusPill.vue'
 import Pagination from '../components/Pagination.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
+import Icon from '../components/Icon.vue'
 
 const toast = useToast()
 const contacts = ref([])
@@ -132,75 +133,85 @@ onMounted(load)
 
 <template>
   <div>
-    <div class="flex flex-wrap items-center justify-between gap-3 mb-6">
+    <div class="title-row">
       <div>
-        <h1 class="text-2xl font-bold">Kontak</h1>
-        <p class="text-sm text-slate-500">Kelola daftar penerima blast. Kontak yang di-blacklist otomatis dikecualikan.</p>
+        <h1 class="page-title">Kontak</h1>
+        <p class="page-sub">Daftar penerima blast. Kontak blacklist otomatis dikecualikan.</p>
       </div>
-      <button
-        @click="openCreate"
-        class="px-4 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm transition-colors"
-      >
-        ➕ Tambah Kontak
+      <button @click="openCreate" class="btn btn-accent">
+        <Icon name="plus" :size="15" /> Tambah kontak
       </button>
     </div>
 
     <!-- Filter -->
-    <div class="flex flex-wrap gap-3 mb-4">
-      <input
-        v-model="search"
-        @input="debouncedLoad"
-        type="search"
-        placeholder="🔍 Cari nama / nomor…"
-        class="field-input !w-64"
-      />
-      <select v-model="tagFilter" @change="page = 1; load()" class="field-input !w-auto">
+    <div class="toolbar">
+      <div class="search-wrap">
+        <Icon name="search" :size="15" class="search-icon" />
+        <input
+          v-model="search"
+          @input="debouncedLoad"
+          type="search"
+          placeholder="Cari nama / nomor…"
+          class="field-input search-input"
+        />
+      </div>
+      <select v-model="tagFilter" @change="page = 1; load()" class="field-input filter-select">
         <option value="">Semua tag</option>
         <option v-for="t in availableTags" :key="t" :value="t">{{ t }}</option>
       </select>
-      <select v-model="blacklistFilter" @change="page = 1; load()" class="field-input !w-auto">
+      <select v-model="blacklistFilter" @change="page = 1; load()" class="field-input filter-select">
         <option value="">Semua (termasuk blacklist)</option>
         <option value="false">Aktif saja</option>
         <option value="true">Blacklist saja</option>
       </select>
+      <span class="toolbar-count">{{ total }} kontak</span>
     </div>
 
     <DataTable
       :loading="loading"
+      stack
       empty-title="Belum ada kontak"
       empty-hint="Tambahkan kontak pertama Anda untuk mulai membuat campaign."
-      empty-icon="👥"
+      empty-icon="users"
     >
       <template #head>
-        <th class="px-4 py-3 font-semibold">Nama</th>
-        <th class="px-4 py-3 font-semibold">Nomor</th>
-        <th class="px-4 py-3 font-semibold">Tag</th>
-        <th class="px-4 py-3 font-semibold">Status</th>
-        <th class="px-4 py-3 font-semibold">Diperbarui</th>
-        <th class="px-4 py-3 font-semibold text-right">Aksi</th>
+        <th>Nama</th>
+        <th>Nomor</th>
+        <th>Tag</th>
+        <th>Status</th>
+        <th>Diperbarui</th>
+        <th class="num">Aksi</th>
       </template>
       <template v-if="contacts.length">
-        <tr v-for="c in contacts" :key="c.id" class="border-t border-slate-100 hover:bg-slate-50">
-          <td class="px-4 py-3 font-medium">{{ c.name }}</td>
-          <td class="px-4 py-3 font-mono text-[13px]">{{ formatPhone(c.phone) }}</td>
-          <td class="px-4 py-3">
-            <span v-if="c.tag" class="text-xs bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full">{{ c.tag }}</span>
-            <span v-else class="text-xs text-slate-400">–</span>
+        <tr v-for="c in contacts" :key="c.id">
+          <td>
+            <div class="row-title">{{ c.name }}</div>
+            <div class="cell-line2 mono">{{ formatPhone(c.phone) }}</div>
           </td>
-          <td class="px-4 py-3">
+          <td class="mono cell-desktop">{{ formatPhone(c.phone) }}</td>
+          <td>
+            <span v-if="c.tag" class="pill pill-neutral">{{ c.tag }}</span>
+            <span v-else class="cell-muted">–</span>
+          </td>
+          <td>
             <StatusPill :status="c.is_blacklisted ? 'blacklisted' : 'active'" />
           </td>
-          <td class="px-4 py-3 text-xs text-slate-500">{{ formatDateTime(c.updated_at || c.created_at) }}</td>
-          <td class="px-4 py-3 text-right whitespace-nowrap">
+          <td class="card-label text-xs">{{ formatDateTime(c.updated_at || c.created_at) }}</td>
+          <td class="num whitespace-nowrap row-actions">
             <button
               @click="toggleBlacklist(c)"
               :title="c.is_blacklisted ? 'Keluarkan dari blacklist' : 'Masukkan ke blacklist'"
-              class="text-sm px-2 py-1 rounded hover:bg-slate-100"
+              class="icon-btn-sm"
+              :class="{ 'is-on': c.is_blacklisted }"
             >
-              {{ c.is_blacklisted ? '↩️' : '🚫' }}
+              <Icon name="ban" :size="15" />
             </button>
-            <button @click="openEdit(c)" title="Ubah" class="text-sm px-2 py-1 rounded hover:bg-slate-100">✏️</button>
-            <button @click="confirmDelete = c" title="Hapus" class="text-sm px-2 py-1 rounded hover:bg-red-50">🗑️</button>
+            <button @click="openEdit(c)" title="Ubah" class="icon-btn-sm">
+              <Icon name="pencil" :size="15" />
+            </button>
+            <button @click="confirmDelete = c" title="Hapus" class="icon-btn-sm is-danger">
+              <Icon name="trash" :size="15" />
+            </button>
           </td>
         </tr>
       </template>
@@ -211,8 +222,8 @@ onMounted(load)
     <Pagination v-if="total > limit" :page="page" :limit="limit" :total="total" @change="(p) => { page = p; load() }" />
 
     <!-- Modal tambah/ubah -->
-    <Modal :open="showModal" :title="editing ? 'Ubah Kontak' : 'Tambah Kontak'" @close="showModal = false">
-      <div class="space-y-4">
+    <Modal :open="showModal" :title="editing ? 'Ubah kontak' : 'Tambah kontak'" @close="showModal = false">
+      <div class="form-grid">
         <div>
           <label class="field-label">Nama *</label>
           <input v-model="form.name" class="field-input" placeholder="Nama penerima (dipakai untuk {{name}})" />
@@ -220,9 +231,8 @@ onMounted(load)
         </div>
         <div>
           <label class="field-label">Nomor WhatsApp *</label>
-          <input v-model="form.phone" class="field-input font-mono" placeholder="6281234567890" />
-          <p class="text-xs text-slate-500 mt-1">Otomatis diseragamkan — <span class="font-mono">0812…</span> dan <span class="font-mono">+62812…</span> tersimpan sebagai satu nomor yang sama.</p>
-          <div class="field-hint">Format internasional tanpa spasi, mis. 6281234567890.</div>
+          <input v-model="form.phone" class="field-input mono" placeholder="6281234567890" />
+          <div class="field-hint">Otomatis diseragamkan: <span class="mono">0812…</span> dan <span class="mono">+62812…</span> tersimpan sebagai satu nomor yang sama.</div>
           <div v-if="formErrors.phone" class="field-error">{{ formErrors.phone }}</div>
         </div>
         <div>
@@ -235,14 +245,8 @@ onMounted(load)
         </div>
       </div>
       <template #footer>
-        <button @click="showModal = false" class="px-4 py-2 rounded-lg border border-slate-300 text-sm font-medium hover:bg-slate-50">
-          Batal
-        </button>
-        <button
-          @click="save"
-          :disabled="saving"
-          class="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium disabled:opacity-50"
-        >
+        <button @click="showModal = false" class="btn btn-secondary">Batal</button>
+        <button @click="save" :disabled="saving" class="btn btn-accent">
           {{ saving ? 'Menyimpan…' : 'Simpan' }}
         </button>
       </template>
@@ -261,3 +265,35 @@ onMounted(load)
     />
   </div>
 </template>
+
+<style scoped>
+.title-row {
+  display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between;
+  gap: 12px; margin-bottom: 24px;
+}
+.toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 12px; }
+.search-wrap { position: relative; }
+.search-icon { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--faint); pointer-events: none; }
+.search-input { width: 240px; padding-left: 36px; min-height: 34px; }
+.filter-select { width: auto; min-height: 34px; }
+.toolbar-count { margin-left: auto; font-size: 13px; color: var(--muted); }
+.form-grid { display: grid; gap: 16px; }
+.cell-muted { color: var(--faint); font-size: 13px; }
+.row-actions { min-width: 108px; }
+.icon-btn-sm {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px; border-radius: var(--radius-control);
+  color: var(--muted); background: transparent; border: 0; cursor: pointer;
+}
+.icon-btn-sm:hover { background: var(--raised); color: var(--text); }
+.icon-btn-sm.is-danger:hover { background: var(--pill-negative-bg); color: var(--pill-negative-ink); }
+.icon-btn-sm.is-on { color: var(--pill-negative-ink); background: var(--pill-negative-bg); }
+.cell-desktop { display: table-cell; }
+@media (max-width: 639px) {
+  .cell-desktop { display: none; }
+  .row-actions { text-align: left; }
+  .search-input { width: 100%; }
+  .search-wrap { flex: 1 1 100%; }
+  .toolbar-count { margin-left: 0; }
+}
+</style>

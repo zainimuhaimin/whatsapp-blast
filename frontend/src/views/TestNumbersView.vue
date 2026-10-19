@@ -7,6 +7,7 @@ import DataTable from '../components/DataTable.vue'
 import Modal from '../components/Modal.vue'
 import StatusPill from '../components/StatusPill.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
+import Icon from '../components/Icon.vue'
 
 const toast = useToast()
 const numbers = ref([])
@@ -104,55 +105,57 @@ onMounted(load)
 
 <template>
   <div>
-    <div class="flex flex-wrap items-center justify-between gap-3 mb-6">
+    <div class="title-row">
       <div>
-        <h1 class="text-2xl font-bold">Nomor Test</h1>
-        <p class="text-sm text-slate-500">Daftar nomor untuk sandbox / mode test. Campaign mode test hanya mengirim ke nomor-nomor aktif di sini.</p>
+        <h1 class="page-title">Nomor test</h1>
+        <p class="page-sub">Sandbox: campaign mode test hanya mengirim ke nomor aktif di sini.</p>
       </div>
-      <button
-        @click="openCreate"
-        class="px-4 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm transition-colors"
-      >
-        ➕ Tambah Nomor Test
+      <button @click="openCreate" class="btn btn-accent">
+        <Icon name="plus" :size="15" /> Tambah nomor test
       </button>
     </div>
 
     <DataTable
       :loading="loading"
+      stack
       empty-title="Belum ada nomor test"
       empty-hint="Tambahkan nomor WhatsApp Anda sendiri untuk uji coba blast."
-      empty-icon="🧪"
+      empty-icon="flask"
     >
       <template #head>
-        <th class="px-4 py-3 font-semibold">Label</th>
-        <th class="px-4 py-3 font-semibold">Nomor</th>
-        <th class="px-4 py-3 font-semibold">Status</th>
-        <th class="px-4 py-3 font-semibold">Ditambahkan</th>
-        <th class="px-4 py-3 font-semibold text-right">Aksi</th>
+        <th>Label</th>
+        <th>Nomor</th>
+        <th>Status</th>
+        <th>Ditambahkan</th>
+        <th class="num">Aksi</th>
       </template>
       <template v-if="numbers.length">
-        <tr v-for="t in numbers" :key="t.id" class="border-t border-slate-100 hover:bg-slate-50">
-          <td class="px-4 py-3 font-medium">{{ t.label }}</td>
-          <td class="px-4 py-3 font-mono text-[13px]">{{ t.phone }}</td>
-          <td class="px-4 py-3"><StatusPill :status="t.is_active === false ? 'inactive' : 'active'" /></td>
-          <td class="px-4 py-3 text-xs text-slate-500">{{ formatDateTime(t.created_at) }}</td>
-          <td class="px-4 py-3 text-right whitespace-nowrap">
+        <tr v-for="t in numbers" :key="t.id">
+          <td class="row-title">{{ t.label }}</td>
+          <td class="mono">{{ t.phone }}</td>
+          <td><StatusPill :status="t.is_active === false ? 'inactive' : 'active'" /></td>
+          <td class="card-label text-xs">{{ formatDateTime(t.created_at) }}</td>
+          <td class="num whitespace-nowrap">
             <button
               @click="toggleActive(t)"
               :title="t.is_active === false ? 'Aktifkan' : 'Nonaktifkan'"
-              class="text-sm px-2 py-1 rounded hover:bg-slate-100"
+              class="icon-btn-sm"
             >
-              {{ t.is_active === false ? '▶️' : '⏸️' }}
+              <Icon :name="t.is_active === false ? 'play' : 'pause'" :size="15" />
             </button>
-            <button @click="openEdit(t)" title="Ubah" class="text-sm px-2 py-1 rounded hover:bg-slate-100">✏️</button>
-            <button @click="confirmDelete = t" title="Hapus" class="text-sm px-2 py-1 rounded hover:bg-red-50">🗑️</button>
+            <button @click="openEdit(t)" title="Ubah" class="icon-btn-sm">
+              <Icon name="pencil" :size="15" />
+            </button>
+            <button @click="confirmDelete = t" title="Hapus" class="icon-btn-sm is-danger">
+              <Icon name="trash" :size="15" />
+            </button>
           </td>
         </tr>
       </template>
     </DataTable>
 
-    <Modal :open="showModal" :title="editing ? 'Ubah Nomor Test' : 'Tambah Nomor Test'" @close="showModal = false">
-      <div class="space-y-4">
+    <Modal :open="showModal" :title="editing ? 'Ubah nomor test' : 'Tambah nomor test'" @close="showModal = false">
+      <div class="form-grid">
         <div>
           <label class="field-label">Label *</label>
           <input v-model="form.label" class="field-input" placeholder="mis. HP saya, HP istri" />
@@ -160,18 +163,18 @@ onMounted(load)
         </div>
         <div>
           <label class="field-label">Nomor WhatsApp *</label>
-          <input v-model="form.phone" class="field-input font-mono" placeholder="6281234567890" />
+          <input v-model="form.phone" class="field-input mono" placeholder="6281234567890" />
           <div class="field-hint">Format internasional tanpa spasi, mis. 6281234567890.</div>
           <div v-if="formErrors.phone" class="field-error">{{ formErrors.phone }}</div>
         </div>
-        <label v-if="editing" class="flex items-center gap-2 text-sm">
-          <input type="checkbox" v-model="form.is_active" class="accent-emerald-600 w-4 h-4" />
-          Nomor aktif (dipakai mode test)
+        <label v-if="editing" class="check-row-sm">
+          <input type="checkbox" v-model="form.is_active" class="check-accent" />
+          <span class="text-sm">Nomor aktif (dipakai mode test)</span>
         </label>
       </div>
       <template #footer>
-        <button @click="showModal = false" class="px-4 py-2 rounded-lg border border-slate-300 text-sm font-medium hover:bg-slate-50">Batal</button>
-        <button @click="save" :disabled="saving" class="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium disabled:opacity-50">
+        <button @click="showModal = false" class="btn btn-secondary">Batal</button>
+        <button @click="save" :disabled="saving" class="btn btn-accent">
           {{ saving ? 'Menyimpan…' : 'Simpan' }}
         </button>
       </template>
@@ -189,3 +192,20 @@ onMounted(load)
     />
   </div>
 </template>
+
+<style scoped>
+.title-row {
+  display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between;
+  gap: 12px; margin-bottom: 24px;
+}
+.form-grid { display: grid; gap: 16px; }
+.check-row-sm { display: flex; align-items: center; gap: 10px; cursor: pointer; }
+.check-accent { accent-color: var(--accent); width: 16px; height: 16px; }
+.icon-btn-sm {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px; border-radius: var(--radius-control);
+  color: var(--muted); background: transparent; border: 0; cursor: pointer;
+}
+.icon-btn-sm:hover { background: var(--raised); color: var(--text); }
+.icon-btn-sm.is-danger:hover { background: var(--pill-negative-bg); color: var(--pill-negative-ink); }
+</style>

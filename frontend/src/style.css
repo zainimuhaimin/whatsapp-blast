@@ -1,67 +1,409 @@
 @import "tailwindcss";
 
+/* =====================================================================
+   WA Blast — design tokens (accent-ladder, face: hijau WhatsApp)
+   Deal: scripts/draw.mjs --app, seed 1929944914. Satu hue (hijau WA):
+   full hue hanya di mark kecil; tint pucat untuk area.
+   ===================================================================== */
 :root {
   color-scheme: light;
+
+  --ground: #f7faf8;          /* satu tingkat ke tint hijau paling pucat */
+  --surface: #ffffff;
+  --raised: #f1f4f2;
+  --border: #e3e8e4;          /* tepi kartu: 1px */
+  --rule: #eef1ee;            /* garis baris tabel */
+  --control: #c9d2cd;         /* border kontrol */
+
+  --text: #111827;
+  --muted: #5f6672;           /* >= 4.5:1 di atas surface */
+  --faint: #6b7280;
+
+  --accent: #159a4c;          /* hijau WA — hanya mark kecil */
+  --accent-soft: #e9f7ee;     /* tint area */
+  --accent-track: #c9ecd6;
+  --accent-ink: #0d5c2e;
+
+  --primary: #1c1e1f;         /* near-black: satu-satunya filled primary */
+
+  --positive: #247b50;
+  --negative: #c4242a;
+  --warning: #92400e;
+
+  --pill-positive-bg: #dcfce7; --pill-positive-ink: #14532d;
+  --pill-negative-bg: #ffedea; --pill-negative-ink: #831c1e;
+  --pill-warning-bg: #fffbeb;  --pill-warning-ink: #92400e;
+  --pill-neutral-bg: #f1f4f2;  --pill-neutral-ink: #374151;
+  --pill-accent-bg: #e9f7ee;   --pill-accent-ink: #0d5c2e;
+  --pill-info-bg: #e8f1fb;     --pill-info-ink: #1d4f8f;
+
+  --radius-card: 8px;
+  --radius-control: 6px;
+  --gap: 16px;
+  --card-pad: 20px;
+  --sidebar-width: 232px;
+  --topbar-height: 64px;
+  --control-height: 34px;
+
+  --font: "DM Sans", "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
-  @apply bg-slate-100 text-slate-800 antialiased;
+  font-family: var(--font);
+  background: var(--ground);
+  color: var(--text);
+  font-size: 14px;
+  line-height: 20px;
+  -webkit-font-smoothing: antialiased;
 }
 
-/* Scrollbar halus untuk area scroll (mis. tabel review) */
-.thin-scroll::-webkit-scrollbar {
-  height: 8px;
-  width: 8px;
+/* Angka tabular di semua tabel, KPI, dan angka yang berubah */
+.num, td.num, th.num,
+.kpi-value, .stat-num {
+  font-variant-numeric: tabular-nums;
 }
-.thin-scroll::-webkit-scrollbar-track {
-  background: transparent;
+td.num, th.num { text-align: right; }
+
+/* ============================ Tipografi ============================ */
+.page-title {
+  font-size: 24px;
+  line-height: 30px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  margin: 0;
 }
-.thin-scroll::-webkit-scrollbar-thumb {
-  @apply bg-slate-300 rounded-full;
+.page-sub {
+  font-size: 14px;
+  color: var(--muted);
+  margin-top: 4px;
+}
+.section-title {
+  font-size: 16px;
+  line-height: 22px;
+  font-weight: 600;
+  margin: 0;
+}
+.card-label {
+  font-size: 12px;
+  color: var(--muted);
 }
 
-/* Chat bubble untuk preview pesan WhatsApp */
+/* ============================ Permukaan ============================ */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+}
+.card-pad { padding: var(--card-pad); }
+
+/* KPI: satu wadah dibagi hairline, bukan kartu per KPI */
+.kpi-strip {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  display: grid;
+}
+.kpi-strip > .kpi-cell {
+  padding: 16px 20px;
+}
+.kpi-strip > .kpi-cell + .kpi-cell {
+  border-left: 1px solid var(--rule);
+}
+.kpi-label { font-size: 12px; color: var(--muted); }
+.kpi-value {
+  font-size: 24px;
+  line-height: 30px;
+  font-weight: 600;
+  margin-top: 2px;
+}
+.kpi-cap { font-size: 12px; color: var(--faint); margin-top: 2px; }
+
+/* ============================ Tombol ============================ */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: var(--control-height);
+  padding: 0 16px;
+  border-radius: var(--radius-control);
+  font-size: 14px;
+  font-weight: 500;
+  border: 1px solid transparent;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+/* Satu primary per layar: near-black */
+.btn-primary { background: var(--primary); color: #fff; }
+.btn-primary:hover:not(:disabled) { background: #000; }
+/* Aksi kirim/blast boleh memakai aksen (satu-satunya filled aksen) */
+.btn-accent { background: var(--accent); color: #fff; }
+.btn-accent:hover:not(:disabled) { background: #128a44; }
+.btn-secondary {
+  background: var(--surface);
+  border-color: var(--control);
+  color: var(--text);
+}
+.btn-secondary:hover:not(:disabled) { border-color: var(--faint); }
+.btn-tertiary { background: transparent; color: var(--muted); padding: 0 8px; }
+.btn-tertiary:hover:not(:disabled) { color: var(--text); }
+.btn-danger { background: transparent; color: var(--negative); padding: 0 8px; }
+.btn-danger:hover:not(:disabled) { background: var(--pill-negative-bg); }
+
+/* ============================ Form ============================ */
+.field-label {
+  display: block;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
+  margin-bottom: 8px;
+}
+.field-input {
+  width: 100%;
+  min-height: 38px;
+  border-radius: 8px;
+  border: 1px solid var(--control);
+  background: var(--surface);
+  padding: 0 12px;
+  font-size: 14px;
+  color: var(--text);
+}
+.field-input::placeholder { color: var(--faint); }
+.field-input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 0;
+  border-color: var(--accent);
+}
+.field-input:disabled { background: var(--raised); color: var(--faint); }
+textarea.field-input { padding: 10px 12px; min-height: 0; }
+select.field-input { width: auto; }
+.field-hint { margin-top: 6px; font-size: 12px; color: var(--muted); }
+.field-error { margin-top: 6px; font-size: 12px; color: var(--negative); }
+.mono { font-family: var(--font-mono); font-size: 13px; }
+
+/* ============================ Tabel ============================ */
+.tbl { width: 100%; font-size: 14px; border-collapse: collapse; }
+.tbl thead th {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+  text-align: left;
+  padding: 10px 16px;
+  white-space: nowrap;
+}
+.tbl tbody td {
+  padding: 12px 16px;
+  border-top: 1px solid var(--rule);
+  vertical-align: middle;
+}
+.tbl tbody tr:hover td { background: #fafcfb; }
+.tbl .row-title { font-weight: 500; color: var(--text); }
+.tbl .row-sub { font-size: 12px; color: var(--faint); margin-top: 2px; }
+.tbl-wrap {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  overflow: hidden;
+}
+.tbl-title {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--rule);
+  font-size: 14px;
+  font-weight: 600;
+}
+.tbl-foot {
+  padding: 10px 16px;
+  border-top: 1px solid var(--rule);
+  font-size: 12px;
+  color: var(--muted);
+  background: var(--ground);
+}
+.tbl-scroll { overflow-x: auto; }
+.tbl-scroll table { min-width: 640px; }
+
+/* ============================ Pill status ============================ */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  flex: none;
+}
+.pill-positive { background: var(--pill-positive-bg); color: var(--pill-positive-ink); }
+.pill-negative { background: var(--pill-negative-bg); color: var(--pill-negative-ink); }
+.pill-warning  { background: var(--pill-warning-bg);  color: var(--pill-warning-ink); }
+.pill-neutral  { background: var(--pill-neutral-bg);  color: var(--pill-neutral-ink); }
+.pill-accent   { background: var(--pill-accent-bg);   color: var(--pill-accent-ink); }
+.pill-info     { background: var(--pill-info-bg);     color: var(--pill-info-ink); }
+
+/* ============================ Navigasi ============================ */
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 34px;
+  padding: 0 12px;
+  margin: 0 8px;
+  border-radius: 8px;
+  font-size: 14px;
+  color: var(--muted);
+  text-decoration: none;
+}
+.nav-item:hover { background: var(--raised); color: var(--text); }
+.nav-item.active {
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+  font-weight: 500;
+}
+.nav-item.active .nav-icon { color: var(--accent); }
+.nav-icon { width: 16px; height: 16px; flex: none; color: var(--faint); }
+.nav-group {
+  font-size: 12px;
+  color: var(--faint);
+  padding: 18px 20px 6px;
+}
+
+/* ===================== Chat bubble (signature) ===================== */
 .wa-bubble {
-  @apply relative rounded-xl bg-[#dcf8c6] text-slate-800 px-4 py-3 shadow-sm;
+  position: relative;
+  background: #d9f2e2;
+  border-radius: 8px;
+  border-top-right-radius: 0;
+  padding: 10px 12px;
+  font-size: 14px;
+  line-height: 20px;
   max-width: 100%;
 }
-.wa-bubble::before {
+.wa-bubble::after {
   content: "";
   position: absolute;
   top: 0;
   right: -8px;
   border: 8px solid transparent;
-  border-top-color: #dcf8c6;
+  border-top-color: #d9f2e2;
   border-right: 0;
 }
+.wa-bubble .wa-time {
+  display: block;
+  text-align: right;
+  font-size: 11px;
+  color: var(--faint);
+  margin-top: 4px;
+}
+/* Ticks ala WhatsApp untuk stepper wizard */
+.wa-ticks { color: #53bdeb; flex: none; }
 
-/* Animasi toast */
+/* ============================ Lainnya ============================ */
+.divider { border: 0; border-top: 1px solid var(--rule); }
+.thin-scroll::-webkit-scrollbar { height: 8px; width: 8px; }
+.thin-scroll::-webkit-scrollbar-track { background: transparent; }
+.thin-scroll::-webkit-scrollbar-thumb { background: var(--control); border-radius: 999px; }
+
 @keyframes toast-in {
-  from {
-    opacity: 0;
-    transform: translateY(8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
 }
-.toast-in {
-  animation: toast-in 0.18s ease-out;
+.toast-in { animation: toast-in 0.18s ease-out; }
+
+/* Skeleton loading: bar abu datar seukuran nilai akhir, tanpa shimmer */
+.skeleton {
+  background: var(--raised);
+  border-radius: 4px;
+  color: transparent !important;
+  user-select: none;
 }
 
-/* Field form standar */
-.field-label {
-  @apply block text-sm font-medium text-slate-700 mb-1;
+/* ============================ Alert ============================ */
+.alert-negative, .alert-warning, .alert-info, .alert-positive {
+  border-radius: var(--radius-card);
+  border: 1px solid;
+  padding: 12px 16px;
+  font-size: 14px;
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
 }
-.field-input {
-  @apply w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm
-    focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500
-    disabled:bg-slate-100 disabled:text-slate-400;
+.alert-negative { background: var(--pill-negative-bg); border-color: #f3c2c4; color: var(--pill-negative-ink); }
+.alert-warning  { background: var(--pill-warning-bg);  border-color: #fde68a; color: var(--pill-warning-ink); }
+.alert-info     { background: var(--pill-info-bg);     border-color: #c9dcf5; color: var(--pill-info-ink); }
+.alert-positive { background: var(--pill-positive-bg); border-color: #b7e8c9; color: var(--pill-positive-ink); }
+.alert-title { font-weight: 600; font-size: 14px; }
+
+/* ============================ Tautan & teks bantu ============================ */
+.row-link {
+  font-weight: 500;
+  color: var(--accent-ink);
+  text-decoration: none;
 }
-.field-hint {
-  @apply mt-1 text-xs text-slate-500;
+.row-link:hover { text-decoration: underline; }
+.empty-inline {
+  font-size: 14px;
+  color: var(--faint);
+  text-align: center;
+  padding: 24px 16px;
+  border: 1px dashed var(--control);
+  border-radius: var(--radius-card);
 }
-.field-error {
-  @apply mt-1 text-xs text-red-600;
+
+/* ============================ Modal ============================ */
+.modal-panel {
+  position: relative;
+  background: var(--surface);
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.14);
+  width: 100%;
+  max-height: 90vh;
+  max-height: 90dvh;
+  display: flex;
+  flex-direction: column;
+}
+.modal-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--rule);
+}
+.modal-x {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px; border-radius: var(--radius-control);
+  color: var(--faint); background: transparent; border: 0; cursor: pointer;
+}
+.modal-x:hover { background: var(--raised); color: var(--text); }
+.modal-body { padding: 20px; overflow-y: auto; }
+.modal-foot {
+  padding: 14px 20px;
+  border-top: 1px solid var(--rule);
+  display: flex; justify-content: flex-end; gap: 8px;
+}
+
+/* ============================ Responsif ============================ */
+@media (max-width: 1023px) {
+  .kpi-strip { grid-template-columns: repeat(2, 1fr); }
+  .kpi-strip > .kpi-cell:nth-child(odd) { border-left: 0; }
+  .kpi-strip > .kpi-cell:nth-child(n+3) { border-top: 1px solid var(--rule); }
+}
+@media (max-width: 639px) {
+  .page-title { font-size: 20px; line-height: 26px; }
+  .card-pad { padding: 16px; }
+  .btn { min-height: 44px; } /* target sentuh */
+  /* Tabel dengan .tbl-stack: thead hilang, baris jadi blok dua baris */
+  .tbl-stack thead { display: none; }
+  .tbl-stack, .tbl-stack tbody, .tbl-stack tr, .tbl-stack td { display: block; width: 100%; }
+  .tbl-stack tbody tr { border-top: 1px solid var(--rule); padding: 12px 16px; }
+  .tbl-stack tbody tr:first-child { border-top: 0; }
+  .tbl-stack tbody td { border: 0; padding: 2px 0; }
+  .tbl-stack tbody td.num { text-align: left; }
+  .tbl-stack .cell-line2 { font-size: 13px; color: var(--muted); margin-top: 4px; }
 }

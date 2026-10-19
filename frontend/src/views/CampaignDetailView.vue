@@ -8,6 +8,7 @@ import StatusPill from '../components/StatusPill.vue'
 import DataTable from '../components/DataTable.vue'
 import Pagination from '../components/Pagination.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
+import Icon from '../components/Icon.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -144,70 +145,93 @@ onUnmounted(() => {
 
 <template>
   <div>
-    <div class="flex flex-wrap items-start justify-between gap-3 mb-6">
-      <div>
-        <button @click="router.push('/')" class="text-sm text-slate-500 hover:text-slate-700 mb-1">← Dashboard</button>
-        <h1 class="text-2xl font-bold flex items-center gap-3">
+    <div class="title-row">
+      <div class="min-w-0">
+        <button @click="router.push('/')" class="back-link">
+          <Icon name="chevron-left" :size="14" /> Dashboard
+        </button>
+        <h1 class="page-title title-with-pill">
           {{ campaign?.name || 'Memuat…' }}
           <StatusPill v-if="campaign" :status="campaign.status" />
         </h1>
-        <div class="text-sm text-slate-500 mt-1 flex flex-wrap gap-x-4 gap-y-1">
-          <span>Provider: <StatusPill v-if="campaign" :status="campaign.provider" /></span>
-          <span v-if="campaign?.is_test_mode" class="font-semibold text-amber-700">🧪 MODE TEST</span>
-          <span v-if="campaign?.send_at">🗓️ {{ formatDateTime(campaign.send_at) }}</span>
+        <div class="title-meta">
+          <span>Provider <StatusPill v-if="campaign" :status="campaign.provider" /></span>
+          <span v-if="campaign?.is_test_mode" class="pill pill-warning">Mode test</span>
+          <span v-if="campaign?.send_at" class="meta-inline"><Icon name="calendar" :size="13" /> {{ formatDateTime(campaign.send_at) }}</span>
         </div>
       </div>
-      <div class="flex gap-2">
-        <button v-if="canPause" @click="confirmAction = 'pause'" class="px-4 py-2 rounded-lg bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium">⏸️ Jeda</button>
-        <button v-if="canResume" @click="confirmAction = 'resume'" class="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium">▶️ Lanjutkan</button>
-        <button v-if="canCancel" @click="confirmAction = 'cancel'" class="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-medium">⛔ Batalkan</button>
+      <div class="title-actions">
+        <button v-if="canPause" @click="confirmAction = 'pause'" class="btn btn-secondary">
+          <Icon name="pause" :size="14" /> Jeda
+        </button>
+        <button v-if="canResume" @click="confirmAction = 'resume'" class="btn btn-accent">
+          <Icon name="play" :size="14" /> Lanjutkan
+        </button>
+        <button v-if="canCancel" @click="confirmAction = 'cancel'" class="btn btn-danger">
+          Batalkan
+        </button>
       </div>
     </div>
 
-    <!-- Ringkasan statistik -->
-    <div class="bg-white rounded-xl border border-slate-200 p-5 mb-4">
-      <div class="flex items-center justify-between mb-3">
-        <h2 class="font-semibold">Ringkasan Pengiriman</h2>
-        <span v-if="isLive" class="text-xs text-emerald-700 bg-emerald-50 px-2 py-1 rounded-full">● auto-refresh 15 dtk</span>
+    <!-- Ringkasan pengiriman -->
+    <div class="card card-pad mb-4">
+      <div class="summary-head">
+        <h2 class="section-title">Ringkasan pengiriman</h2>
+        <span v-if="isLive" class="live-dot"><span class="dot"></span> auto-refresh 15 dtk</span>
       </div>
-      <div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
-        <div class="rounded-lg bg-slate-50 p-3"><div class="text-xs text-slate-500">Menunggu</div><div class="text-xl font-bold">{{ formatNumber(stats?.pending) }}</div></div>
-        <div class="rounded-lg bg-blue-50 p-3"><div class="text-xs text-blue-600">Terkirim</div><div class="text-xl font-bold text-blue-700">{{ formatNumber(stats?.sent) }}</div></div>
-        <div class="rounded-lg bg-emerald-50 p-3"><div class="text-xs text-emerald-600">Diterima</div><div class="text-xl font-bold text-emerald-700">{{ formatNumber(stats?.delivered) }}</div></div>
-        <div class="rounded-lg bg-teal-50 p-3"><div class="text-xs text-teal-600">Dibaca</div><div class="text-xl font-bold text-teal-700">{{ formatNumber(stats?.read) }}</div></div>
-        <div class="rounded-lg bg-red-50 p-3"><div class="text-xs text-red-600">Gagal</div><div class="text-xl font-bold text-red-700">{{ formatNumber(stats?.failed) }}</div></div>
+      <div class="kpi-strip kpi-5">
+        <div class="kpi-cell">
+          <div class="kpi-label">Menunggu</div>
+          <div class="kpi-value num">{{ formatNumber(stats?.pending) }}</div>
+        </div>
+        <div class="kpi-cell">
+          <div class="kpi-label">Terkirim</div>
+          <div class="kpi-value num">{{ formatNumber(stats?.sent) }}</div>
+        </div>
+        <div class="kpi-cell">
+          <div class="kpi-label">Diterima</div>
+          <div class="kpi-value num">{{ formatNumber(stats?.delivered) }}</div>
+        </div>
+        <div class="kpi-cell">
+          <div class="kpi-label">Dibaca</div>
+          <div class="kpi-value num">{{ formatNumber(stats?.read) }}</div>
+        </div>
+        <div class="kpi-cell">
+          <div class="kpi-label">Gagal</div>
+          <div class="kpi-value num kpi-bad">{{ formatNumber(stats?.failed) }}</div>
+        </div>
       </div>
-      <div class="h-2.5 bg-slate-100 rounded-full overflow-hidden">
-        <div class="h-full bg-emerald-500 transition-all" :style="{ width: progress + '%' }"></div>
+      <div class="progress-track" role="progressbar" :aria-valuenow="progress" aria-valuemin="0" aria-valuemax="100">
+        <div class="progress-fill" :style="{ width: progress + '%' }"></div>
       </div>
-      <div class="text-xs text-slate-500 mt-1">{{ progress }}% selesai diproses</div>
+      <div class="card-label mt-1">{{ progress }}% selesai diproses</div>
     </div>
 
     <!-- Tabel penerima -->
-    <div class="bg-white rounded-xl border border-slate-200 overflow-hidden mb-4">
-      <div class="px-4 py-3 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
-        <h2 class="font-semibold">Penerima</h2>
-        <select v-model="recStatus" @change="recPage = 1; loadRecipients()" class="field-input !w-auto !py-1.5 text-sm">
+    <div class="tbl-wrap mb-4">
+      <div class="tbl-title-row">
+        <h2 class="section-title">Penerima</h2>
+        <select v-model="recStatus" @change="recPage = 1; loadRecipients()" class="field-input filter-select">
           <option v-for="s in STATUS_FILTERS" :key="s.value" :value="s.value">{{ s.label }}</option>
         </select>
       </div>
       <DataTable :loading="recLoading" empty-title="Belum ada penerima" empty-hint="Tambahkan penerima lewat wizard campaign.">
         <template #head>
-          <th class="px-4 py-3 font-semibold">Nama</th>
-          <th class="px-4 py-3 font-semibold">Nomor</th>
-          <th class="px-4 py-3 font-semibold">Status</th>
-          <th class="px-4 py-3 font-semibold">Retry</th>
-          <th class="px-4 py-3 font-semibold">Terkirim</th>
-          <th class="px-4 py-3 font-semibold">Error</th>
+          <th>Nama</th>
+          <th>Nomor</th>
+          <th>Status</th>
+          <th class="num">Retry</th>
+          <th>Terkirim</th>
+          <th>Error</th>
         </template>
         <template v-if="recipients.length">
-          <tr v-for="r in recipients" :key="r.id" class="border-t border-slate-100 hover:bg-slate-50">
-            <td class="px-4 py-2.5">{{ r.name || r.contact_name || '–' }}</td>
-            <td class="px-4 py-2.5 font-mono text-xs">{{ r.phone }}</td>
-            <td class="px-4 py-2.5"><StatusPill :status="r.status" /></td>
-            <td class="px-4 py-2.5 text-sm">{{ r.retry_count || 0 }}×</td>
-            <td class="px-4 py-2.5 text-xs text-slate-500">{{ formatDateTime(r.sent_at) }}</td>
-            <td class="px-4 py-2.5 text-xs text-red-600 max-w-56 truncate" :title="r.last_error">{{ r.last_error || '–' }}</td>
+          <tr v-for="r in recipients" :key="r.id">
+            <td class="row-title">{{ r.name || r.contact_name || '–' }}</td>
+            <td class="mono text-xs">{{ r.phone }}</td>
+            <td><StatusPill :status="r.status" /></td>
+            <td class="num">{{ r.retry_count || 0 }}×</td>
+            <td class="card-label text-xs">{{ formatDateTime(r.sent_at) }}</td>
+            <td class="text-xs max-w-56 truncate" style="color: var(--negative)" :title="r.last_error">{{ r.last_error || '–' }}</td>
           </tr>
         </template>
       </DataTable>
@@ -215,31 +239,31 @@ onUnmounted(() => {
     </div>
 
     <!-- Daftar pesan per penerima -->
-    <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
-      <div class="px-4 py-3 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
-        <h2 class="font-semibold">Detail Pesan per Penerima</h2>
-        <select v-model="msgStatus" @change="msgPage = 1; loadMessages()" class="field-input !w-auto !py-1.5 text-sm">
+    <div class="tbl-wrap">
+      <div class="tbl-title-row">
+        <h2 class="section-title">Detail pesan per penerima</h2>
+        <select v-model="msgStatus" @change="msgPage = 1; loadMessages()" class="field-input filter-select">
           <option v-for="s in STATUS_FILTERS" :key="s.value" :value="s.value">{{ s.label }}</option>
         </select>
       </div>
       <DataTable :loading="msgLoading" empty-title="Belum ada pesan" empty-hint="Pesan muncul setelah pengiriman dimulai.">
         <template #head>
-          <th class="px-4 py-3 font-semibold">Penerima</th>
-          <th class="px-4 py-3 font-semibold">Isi pesan</th>
-          <th class="px-4 py-3 font-semibold">Status</th>
-          <th class="px-4 py-3 font-semibold">ID Provider</th>
+          <th>Penerima</th>
+          <th>Isi pesan</th>
+          <th>Status</th>
+          <th>ID provider</th>
         </template>
         <template v-if="messages.length">
-          <tr v-for="m in messages" :key="m.id" class="border-t border-slate-100 hover:bg-slate-50 align-top">
-            <td class="px-4 py-2.5 whitespace-nowrap">
-              <div class="font-medium text-sm">{{ m.name || m.contact_name || '–' }}</div>
-              <div class="font-mono text-xs text-slate-500">{{ m.phone }}</div>
+          <tr v-for="m in messages" :key="m.id" class="align-top">
+            <td class="whitespace-nowrap">
+              <div class="row-title text-sm">{{ m.name || m.contact_name || '–' }}</div>
+              <div class="mono text-xs card-label">{{ m.phone }}</div>
             </td>
-            <td class="px-4 py-2.5 text-sm max-w-md">
+            <td class="text-sm max-w-md">
               <div class="whitespace-pre-wrap break-words">{{ truncate(m.rendered_message || m.body || m.message, 300) }}</div>
             </td>
-            <td class="px-4 py-2.5"><StatusPill :status="m.status" /></td>
-            <td class="px-4 py-2.5 font-mono text-xs text-slate-500">{{ m.provider_message_id || '–' }}</td>
+            <td><StatusPill :status="m.status" /></td>
+            <td class="mono text-xs card-label">{{ m.provider_message_id || '–' }}</td>
           </tr>
         </template>
       </DataTable>
@@ -258,3 +282,47 @@ onUnmounted(() => {
     />
   </div>
 </template>
+
+<style scoped>
+.title-row {
+  display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between;
+  gap: 12px; margin-bottom: 24px;
+}
+.back-link {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 13px; color: var(--muted); background: none; border: 0; cursor: pointer;
+  margin-bottom: 6px; padding: 0;
+}
+.back-link:hover { color: var(--text); }
+.title-with-pill { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.title-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 8px; font-size: 13px; color: var(--muted); }
+.meta-inline { display: inline-flex; align-items: center; gap: 6px; }
+.title-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.summary-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+.live-dot { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--accent-ink); background: var(--accent-soft); padding: 4px 10px; border-radius: 999px; }
+.live-dot .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
+.kpi-5 { grid-template-columns: repeat(5, 1fr); margin-bottom: 16px; }
+.kpi-bad { color: var(--negative); }
+.progress-track {
+  height: 8px; border-radius: 999px;
+  background: var(--accent-track);
+  overflow: hidden;
+}
+.progress-fill { height: 100%; background: var(--accent); border-radius: 999px; transition: width 0.4s ease; }
+.tbl-title-row {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+  gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--rule);
+}
+.filter-select { width: auto; min-height: 32px; font-size: 13px; }
+@media (max-width: 1023px) {
+  .kpi-5 { grid-template-columns: repeat(3, 1fr); }
+  .kpi-5 > .kpi-cell:nth-child(3n+1) { border-left: 0; }
+  .kpi-5 > .kpi-cell:nth-child(n+4) { border-top: 1px solid var(--rule); }
+}
+@media (max-width: 639px) {
+  .kpi-5 { grid-template-columns: repeat(2, 1fr); }
+  .kpi-5 > .kpi-cell:nth-child(odd) { border-left: 0; }
+  .kpi-5 > .kpi-cell:nth-child(n+3) { border-top: 1px solid var(--rule); }
+  .title-actions .btn { flex: 1; }
+}
+</style>

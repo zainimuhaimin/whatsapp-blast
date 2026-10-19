@@ -9,6 +9,7 @@ import {
 } from '../utils/format'
 import StatusPill from '../components/StatusPill.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
+import Icon from '../components/Icon.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -98,12 +99,12 @@ async function runAiExtract() {
     const data = await campaignsApi.aiExtract(campaign.value.id, aiText.value.trim())
     aiResult.value = data.values || data.candidates || data.variables || data.mapping || {}
     if (data.ai_available === false || data.note) {
-      aiNote.value = data.note || 'Layanan AI tidak tersedia saat ini — Anda tetap bisa mengisi nilai variabel secara manual di langkah 4.'
+      aiNote.value = data.note || 'Layanan AI tidak tersedia saat ini. Anda tetap bisa mengisi nilai variabel secara manual di langkah 4.'
     }
     const n = Object.keys(aiResult.value || {}).length
-    toast.success(n ? `AI mengekstrak ${n} nilai variabel.` : 'AI tidak menemukan nilai yang cocok — isi manual di langkah 4.')
+    toast.success(n ? `AI mengekstrak ${n} nilai variabel.` : 'AI tidak menemukan nilai yang cocok. Isi manual di langkah 4.')
   } catch (e) {
-    aiNote.value = 'Layanan AI tidak tersedia saat ini — Anda tetap bisa mengisi nilai variabel secara manual di langkah 4.'
+    aiNote.value = 'Layanan AI tidak tersedia saat ini. Anda tetap bisa mengisi nilai variabel secara manual di langkah 4.'
   } finally {
     aiLoading.value = false
   }
@@ -232,8 +233,8 @@ async function quickAddContact() {
     }
     toast.success(
       created
-        ? `Kontak "${contact.name}" tersimpan & otomatis terpilih ✓`
-        : `Nomor sudah terdaftar — kontak "${contact.name}" otomatis terpilih ✓`
+        ? `Kontak "${contact.name}" tersimpan dan otomatis terpilih`
+        : `Nomor sudah terdaftar. Kontak "${contact.name}" otomatis terpilih`
     )
     quickName.value = ''
     quickPhone.value = ''
@@ -271,6 +272,11 @@ async function loadReview() {
 const rv = computed(() => review.value || {})
 const rvCampaign = computed(() => rv.value.campaign || campaign.value || {})
 const rvTotal = computed(() => Number(rv.value.total_recipients ?? rv.value.total ?? 0))
+// Jam ala WhatsApp untuk pratinjau bubble (bukan data nyata)
+const sampleTime = computed(() => {
+  const d = new Date()
+  return `${String(d.getHours()).padStart(2, '0')}.${String(d.getMinutes()).padStart(2, '0')}`
+})
 const rvTable = computed(() => rv.value.recipient_preview || rv.value.table || rv.value.rows || rv.value.recipients || [])
 const rvSamples = computed(() => rv.value.samples || rv.value.sample_messages || [])
 const rvErrors = computed(() => rv.value.validation_errors || rv.value.errors || [])
@@ -451,46 +457,36 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="max-w-5xl mx-auto">
+  <div class="wizard">
     <div class="mb-6">
-      <h1 class="text-2xl font-bold">Campaign Baru</h1>
-      <p class="text-sm text-slate-500">Wizard 6 langkah: info → template → AI → mapping → penerima → review</p>
+      <h1 class="page-title">Campaign Baru</h1>
+      <p class="page-sub">6 langkah: info, template, AI, mapping, penerima, review</p>
     </div>
 
-    <!-- Step indicator -->
-    <ol class="flex items-center gap-1 mb-8 overflow-x-auto thin-scroll">
-      <li v-for="s in STEPS" :key="s.n" class="flex items-center shrink-0">
-        <button
-          @click="goTo(s.n)"
-          class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm"
-          :class="s.n === step
-            ? 'bg-emerald-600 text-white font-semibold'
-            : s.n < step
-              ? 'text-emerald-700 hover:bg-emerald-50'
-              : 'text-slate-400'"
-        >
-          <span
-            class="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold"
-            :class="s.n === step ? 'bg-white text-emerald-700' : s.n < step ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-500'"
-          >
-            {{ s.n < step ? '✓' : s.n }}
+    <!-- Step indicator: ticks ala WhatsApp untuk langkah selesai -->
+    <ol class="steps">
+      <li v-for="s in STEPS" :key="s.n" class="step" :class="{ current: s.n === step, done: s.n < step }">
+        <button @click="goTo(s.n)" class="step-btn">
+          <span class="step-mark">
+            <Icon v-if="s.n < step" name="check-double" :size="14" class="wa-ticks" />
+            <span v-else class="step-num">{{ s.n }}</span>
           </span>
-          {{ s.label }}
+          <span class="step-label">{{ s.label }}</span>
         </button>
-        <span v-if="s.n < STEPS.length" class="mx-1 text-slate-300">›</span>
+        <span v-if="s.n < STEPS.length" class="step-sep" aria-hidden="true">›</span>
       </li>
     </ol>
 
-    <div v-if="stepErrors.length" class="mb-4 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
-      <div class="font-semibold text-red-700 text-sm mb-1">Perbaiki dulu:</div>
-      <ul class="list-disc list-inside text-sm text-red-600 space-y-0.5">
+    <div v-if="stepErrors.length" class="alert-negative mb-4">
+      <div class="font-semibold text-sm mb-1">Perbaiki dulu:</div>
+      <ul class="list-disc list-inside text-sm space-y-0.5">
         <li v-for="(e, i) in stepErrors" :key="i">{{ e }}</li>
       </ul>
     </div>
 
     <!-- ================= LANGKAH 1: INFO DASAR ================= -->
-    <section v-if="step === 1" class="bg-white rounded-xl border border-slate-200 p-6 space-y-5">
-      <h2 class="text-lg font-semibold">1. Info Dasar Campaign</h2>
+    <section v-if="step === 1" class="card card-pad form-grid">
+      <h2 class="section-title">1. Info dasar campaign</h2>
 
       <div>
         <label class="field-label">Nama campaign *</label>
@@ -499,188 +495,205 @@ onMounted(async () => {
 
       <div>
         <label class="field-label">Jalur pengiriman (provider)</label>
-        <div class="grid md:grid-cols-2 gap-3">
+        <div class="provider-grid">
           <label
-            class="border rounded-xl p-4 cursor-pointer transition-colors"
-            :class="form.provider === 'official' ? 'border-emerald-500 bg-emerald-50 ring-1 ring-emerald-500' : 'border-slate-300 hover:border-slate-400'"
+            class="provider-card"
+            :class="{ selected: form.provider === 'official' }"
           >
-            <div class="flex items-center gap-2 font-semibold text-sm">
-              <input type="radio" v-model="form.provider" value="official" class="accent-emerald-600" />
-              ✅ Resmi — Meta Cloud API
+            <div class="provider-head">
+              <input type="radio" v-model="form.provider" value="official" class="radio-accent" />
+              <Icon name="check" :size="15" class="provider-check" />
+              <span class="font-semibold text-sm">Resmi — Meta Cloud API</span>
             </div>
-            <ul class="text-xs text-slate-600 mt-2 space-y-1 ml-6">
-              <li>• Biaya ± Rp 627,33/pesan marketing (per pesan ter-deliver)</li>
-              <li>• Wajib template yang disetujui Meta</li>
-              <li>• Risiko banned rendah bila penerima opt-in</li>
+            <ul class="provider-points">
+              <li>Biaya ± Rp 627,33/pesan marketing (per pesan ter-deliver)</li>
+              <li>Wajib template yang disetujui Meta</li>
+              <li>Risiko banned rendah bila penerima opt-in</li>
             </ul>
           </label>
           <label
-            class="border rounded-xl p-4 cursor-pointer transition-colors"
-            :class="form.provider === 'unofficial' ? 'border-red-500 bg-red-50 ring-1 ring-red-500' : 'border-slate-300 hover:border-slate-400'"
+            class="provider-card"
+            :class="{ selected: form.provider === 'unofficial' }"
           >
-            <div class="flex items-center gap-2 font-semibold text-sm">
-              <input type="radio" v-model="form.provider" value="unofficial" class="accent-red-600" />
-              ⚡ Non-resmi — Baileys (gratis, self-hosted)
+            <div class="provider-head">
+              <input type="radio" v-model="form.provider" value="unofficial" class="radio-accent" />
+              <Icon name="zap" :size="15" class="provider-check" />
+              <span class="font-semibold text-sm">Non-resmi — Baileys (gratis, self-hosted)</span>
             </div>
-            <ul class="text-xs text-slate-600 mt-2 space-y-1 ml-6">
-              <li>• <b>Rp 0</b> — free tier 1.000 pesan/bulan</li>
-              <li>• Teks bebas, tanpa approval template</li>
-              <li>• Cocok untuk testing template/variabel/AI</li>
+            <ul class="provider-points">
+              <li><b>Rp 0</b> — gratis, tanpa perantara</li>
+              <li>Teks bebas, tanpa approval template</li>
+              <li>Cocok untuk testing template/variabel/AI</li>
             </ul>
           </label>
         </div>
 
-        <div v-if="form.provider === 'unofficial'" class="mt-3 bg-red-50 border-2 border-red-300 rounded-xl px-4 py-3">
-          <div class="font-bold text-red-700 text-sm">⚠️ PERINGATAN RISIKO BANNED</div>
-          <p class="text-sm text-red-600 mt-1">
-            Jalur non-resmi bukan API resmi WhatsApp. <b>Nomor yang dipakai bisa di-banned WhatsApp.</b>
-            Jangan gunakan nomor WA utama/pribadi — pakai nomor testing khusus. Disarankan hanya untuk testing,
-            bukan blast produksi.
-          </p>
+        <div v-if="form.provider === 'unofficial'" class="alert-negative mt-3">
+          <Icon name="alert" :size="16" class="mt-0.5 shrink-0" />
+          <div>
+            <div class="alert-title">Risiko banned</div>
+            <p class="mt-1">
+              Jalur non-resmi bukan API resmi WhatsApp. <b>Nomor yang dipakai bisa di-banned WhatsApp.</b>
+              Jangan gunakan nomor WA utama/pribadi. Pakai nomor testing khusus. Disarankan hanya untuk testing,
+              bukan blast produksi.
+            </p>
+          </div>
         </div>
-        <div v-else class="mt-3 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-sm text-emerald-800">
-          ℹ️ Jalur resmi memakai tarif Meta per pesan ter-deliver (Marketing Rp 627,33 · Utility Rp 366,65 · Authentication Rp 366,65 · Service Rp 356,65).
-          Estimasi biaya total dihitung di halaman review.
+        <div v-else class="alert-positive mt-3">
+          <Icon name="info" :size="16" class="mt-0.5 shrink-0" />
+          <div>
+            Jalur resmi memakai tarif Meta per pesan ter-deliver (Marketing Rp 627,33 · Utility Rp 366,65 · Authentication Rp 366,65 · Service Rp 356,65).
+            Estimasi biaya total dihitung di halaman review.
+          </div>
         </div>
       </div>
 
-      <div class="flex items-start gap-3 border border-slate-200 rounded-xl p-4">
-        <input id="testmode" type="checkbox" v-model="form.is_test_mode" class="mt-1 accent-amber-500 w-4 h-4" />
-        <label for="testmode" class="text-sm">
-          <span class="font-semibold">🧪 Mode test</span>
-          <span class="text-slate-600 block mt-0.5">Bila aktif, pesan HANYA dikirim ke nomor test terdaftar (bukan ke kontak asli). Aman untuk uji coba.</span>
-        </label>
-      </div>
+      <label class="check-row">
+        <input id="testmode" type="checkbox" v-model="form.is_test_mode" class="check-accent" />
+        <span class="text-sm">
+          <span class="font-semibold">Mode test</span>
+          <span class="block card-label mt-0.5">Bila aktif, pesan hanya dikirim ke nomor test terdaftar (bukan ke kontak asli). Aman untuk uji coba.</span>
+        </span>
+      </label>
 
       <div>
         <label class="field-label">Jadwal kirim (opsional)</label>
-        <input v-model="form.send_at" type="datetime-local" class="field-input !w-auto" />
+        <input v-model="form.send_at" type="datetime-local" class="field-input w-auto" />
         <div class="field-hint">Kosongkan untuk kirim segera setelah konfirmasi. Bila diisi, campaign berstatus terjadwal.</div>
       </div>
     </section>
 
     <!-- ================= LANGKAH 2: TEMPLATE ================= -->
-    <section v-if="step === 2" class="space-y-4">
-      <div class="bg-white rounded-xl border border-slate-200 p-6">
-        <h2 class="text-lg font-semibold mb-1">2. Pilih Versi Template</h2>
-        <p class="text-sm text-slate-500 mb-4">Versi yang dipilih di-pin ke campaign (immutable — tidak berubah walau template diedit).</p>
+    <section v-if="step === 2" class="form-grid">
+      <div class="card card-pad">
+        <h2 class="section-title mb-1">2. Pilih versi template</h2>
+        <p class="card-label mb-4">Versi yang dipilih di-pin ke campaign (tidak berubah walau template diedit).</p>
 
-        <div v-if="!templates.length" class="text-sm text-slate-400 text-center py-6">
-          Belum ada template. <RouterLink to="/templates" class="text-emerald-700 underline">Buat template dulu</RouterLink>.
+        <div v-if="!templates.length" class="empty-inline">
+          Belum ada template. <RouterLink to="/templates" class="row-link">Buat template dulu</RouterLink>.
         </div>
 
-        <div v-for="t in templates" :key="t.id" class="border border-slate-200 rounded-xl mb-3 overflow-hidden">
-          <button @click="toggleTemplate(t)" class="w-full px-4 py-3 flex items-center gap-3 hover:bg-slate-50 text-left">
-            <span class="text-lg">{{ expandedTemplate?.id === t.id ? '▾' : '▸' }}</span>
+        <div v-for="t in templates" :key="t.id" class="tpl-group">
+          <button @click="toggleTemplate(t)" class="tpl-head">
+            <Icon :name="expandedTemplate?.id === t.id ? 'chevron-down' : 'chevron-right'" :size="15" class="shrink-0" />
             <span class="font-medium">{{ t.name }}</span>
-            <span v-if="t.description" class="text-xs text-slate-400 truncate">{{ truncate(t.description, 60) }}</span>
+            <span v-if="t.description" class="card-label truncate">{{ truncate(t.description, 60) }}</span>
           </button>
-          <div v-if="expandedTemplate?.id === t.id" class="border-t border-slate-100 px-4 py-3 space-y-2 bg-slate-50/50">
-            <div v-if="versionsLoading" class="text-sm text-slate-500">Memuat versi…</div>
+          <div v-if="expandedTemplate?.id === t.id" class="tpl-versions">
+            <div v-if="versionsLoading" class="card-label">Memuat versi…</div>
             <label
               v-for="v in (versionsCache[t.id] || [])"
               :key="v.id || v.version_number"
-              class="block border rounded-xl p-3 cursor-pointer bg-white transition-colors"
-              :class="selectedVersion?.version?.id === v.id ? 'border-emerald-500 ring-1 ring-emerald-500' : 'border-slate-200 hover:border-slate-300'"
+              class="version-card"
+              :class="{ selected: selectedVersion?.version?.id === v.id }"
             >
-              <div class="flex flex-wrap items-center gap-2">
+              <div class="version-head">
                 <input
                   type="radio"
                   :checked="selectedVersion?.version?.id === v.id"
                   @change="pickVersion(t, v)"
-                  class="accent-emerald-600"
+                  class="radio-accent"
                 />
                 <span class="font-semibold text-sm">Versi {{ v.version_number }}</span>
                 <StatusPill :status="v.approval_status || 'draft'" />
-                <span v-if="v.provider_category" class="text-xs bg-slate-100 px-2 py-0.5 rounded-full">{{ v.provider_category }}</span>
-                <span class="ml-auto text-xs text-slate-400">{{ (v.variables || []).length }} variabel</span>
+                <span v-if="v.provider_category" class="pill pill-neutral">{{ v.provider_category }}</span>
+                <span class="card-label ml-auto">{{ (v.variables || []).length }} variabel</span>
               </div>
-              <pre class="whitespace-pre-wrap text-xs text-slate-600 mt-2 font-sans">{{ truncate(v.body, 220) }}</pre>
+              <pre class="version-body">{{ truncate(v.body, 220) }}</pre>
               <div
                 v-if="form.provider === 'official' && (v.approval_status || 'draft') !== 'approved'"
-                class="mt-2 text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-2 py-1"
+                class="alert-negative mt-2"
               >
-                ⚠️ Jalur resmi mewajibkan template berstatus <b>approved</b> oleh Meta — versi ini belum bisa dipakai blast produksi.
+                <Icon name="alert" :size="14" class="mt-0.5 shrink-0" />
+                <span>Jalur resmi mewajibkan template berstatus <b>approved</b> oleh Meta. Versi ini belum bisa dipakai blast produksi.</span>
               </div>
             </label>
           </div>
         </div>
 
-        <div v-if="selectedVersion" class="mt-4 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-sm">
-          ✅ Terpilih: <b>{{ selectedVersion.template.name }}</b> — versi {{ selectedVersion.version.version_number }}
-          <span class="text-slate-500">({{ selectedVariables.length }} variabel: {{ selectedVariables.map(v => wrapVar(v)).join(', ') || '–' }})</span>
+        <div v-if="selectedVersion" class="alert-positive mt-4">
+          <Icon name="check" :size="15" class="mt-0.5 shrink-0" />
+          <div class="text-sm">
+            Terpilih: <b>{{ selectedVersion.template.name }}</b> — versi {{ selectedVersion.version.version_number }}
+            <span class="card-label">({{ selectedVariables.length }} variabel: {{ selectedVariables.map(v => wrapVar(v)).join(', ') || '–' }})</span>
+          </div>
         </div>
       </div>
     </section>
 
     <!-- ================= LANGKAH 3: INPUT AI ================= -->
-    <section v-if="step === 3" class="bg-white rounded-xl border border-slate-200 p-6 space-y-4">
-      <h2 class="text-lg font-semibold">3. Input AI — Ekstraksi Variabel</h2>
-      <p class="text-sm text-slate-500">
-        Tulis info campaign dengan bahasa bebas (mis. “Promo akhir tahun diskon 50% berlaku sampai 31 Desember, kode: HEMAT50”).
-        AI akan mengekstrak nilai untuk variabel template. Hasilnya bisa Anda edit di langkah berikutnya.
-      </p>
+    <section v-if="step === 3" class="card card-pad form-grid">
+      <div>
+        <h2 class="section-title">3. Input AI — ekstraksi variabel</h2>
+        <p class="card-label mt-1">
+          Tulis info campaign dengan bahasa bebas (mis. “Promo akhir tahun diskon 50% berlaku sampai 31 Desember, kode: HEMAT50”).
+          AI akan mengekstrak nilai untuk variabel template. Hasilnya bisa Anda edit di langkah berikutnya.
+        </p>
+      </div>
 
       <div>
         <label class="field-label">Teks bebas</label>
         <textarea v-model="aiText" rows="6" class="field-input" placeholder="Contoh: Promo cuci gudang! Diskon 70% semua fashion, hanya tanggal 12-12. Gratis ongkir min. belanja 100rb."></textarea>
       </div>
 
-      <button
-        @click="runAiExtract"
-        :disabled="aiLoading"
-        class="px-4 py-2.5 rounded-lg bg-violet-600 hover:bg-violet-700 text-white font-semibold text-sm disabled:opacity-50"
-      >
-        {{ aiLoading ? '🤖 Menganalisis…' : '🤖 Ekstrak dengan AI' }}
-      </button>
-
-      <div v-if="aiNote" class="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-800">
-        ⚠️ {{ aiNote }}
+      <div>
+        <button @click="runAiExtract" :disabled="aiLoading" class="btn btn-secondary">
+          <Icon name="zap" :size="15" /> {{ aiLoading ? 'Menganalisis…' : 'Ekstrak dengan AI' }}
+        </button>
       </div>
 
-      <div v-if="aiResult && Object.keys(aiResult).length" class="border border-slate-200 rounded-xl overflow-hidden">
-        <div class="bg-slate-50 px-4 py-2 text-sm font-semibold">Hasil ekstraksi AI</div>
-        <table class="w-full text-sm">
+      <div v-if="aiNote" class="alert-warning">
+        <Icon name="alert" :size="15" class="mt-0.5 shrink-0" />
+        <span>{{ aiNote }}</span>
+      </div>
+
+      <div v-if="aiResult && Object.keys(aiResult).length" class="tbl-wrap">
+        <div class="tbl-title">Hasil ekstraksi AI</div>
+        <table class="tbl">
           <tbody>
-            <tr v-for="(val, key) in aiResult" :key="key" class="border-t border-slate-100">
-              <td class="px-4 py-2 font-mono text-emerald-800 w-40">{{ wrapVar(key) }}</td>
-              <td class="px-4 py-2">{{ val || '–' }}</td>
+            <tr v-for="(val, key) in aiResult" :key="key">
+              <td class="mono w-40" style="color: var(--accent-ink); font-weight: 600">{{ wrapVar(key) }}</td>
+              <td>{{ val || '–' }}</td>
             </tr>
           </tbody>
         </table>
-        <div class="px-4 py-2 text-xs text-slate-500 bg-slate-50">Nilai ini menjadi prefill di langkah Mapping dan masih bisa diubah.</div>
+        <div class="tbl-foot">Nilai ini menjadi prefill di langkah Mapping dan masih bisa diubah.</div>
       </div>
 
-      <button @click="step = 4; initMappings()" class="text-sm text-slate-500 underline hover:text-slate-700">
-        Lewati — isi manual di langkah Mapping →
-      </button>
+      <div>
+        <button @click="step = 4; initMappings()" class="btn-tertiary text-sm">
+          Lewati, isi manual di langkah Mapping <Icon name="chevron-right" :size="14" />
+        </button>
+      </div>
     </section>
 
     <!-- ================= LANGKAH 4: MAPPING ================= -->
-    <section v-if="step === 4" class="bg-white rounded-xl border border-slate-200 p-6 space-y-4">
-      <h2 class="text-lg font-semibold">4. Mapping Variabel</h2>
-      <p class="text-sm text-slate-500">
-        Tentukan sumber tiap variabel: <b>field kontak</b> (diambil dari data tiap penerima — {{name}} dsb, bukan dari AI)
-        atau <b>nilai campaign</b> (sama untuk semua penerima, dari hasil AI dan bisa diedit).
-      </p>
+    <section v-if="step === 4" class="card card-pad form-grid">
+      <div>
+        <h2 class="section-title">4. Mapping variabel</h2>
+        <p class="card-label mt-1">
+          Tentukan sumber tiap variabel: <b>field kontak</b> (diambil dari data tiap penerima, bukan dari AI)
+          atau <b>nilai campaign</b> (sama untuk semua penerima, dari hasil AI dan bisa diedit).
+        </p>
+      </div>
 
-      <div v-if="!mappings.length" class="text-sm text-slate-400 text-center py-6">Memuat variabel…</div>
+      <div v-if="!mappings.length" class="empty-inline">Memuat variabel…</div>
 
-      <div v-for="m in mappings" :key="m.variable_name" class="border border-slate-200 rounded-xl p-4 space-y-3">
-        <div class="font-mono font-semibold text-emerald-800">{{ wrapVar(m.variable_name) }}</div>
-        <div class="flex flex-wrap gap-4 text-sm">
-          <label class="flex items-center gap-2 cursor-pointer">
-            <input type="radio" v-model="m.source" value="contact" class="accent-emerald-600" />
-            👤 Field kontak
+      <div v-for="m in mappings" :key="m.variable_name" class="mapping-card">
+        <div class="mono font-semibold" style="color: var(--accent-ink)">{{ wrapVar(m.variable_name) }}</div>
+        <div class="mapping-sources">
+          <label class="radio-row">
+            <input type="radio" v-model="m.source" value="contact" class="radio-accent" />
+            Field kontak
           </label>
-          <label class="flex items-center gap-2 cursor-pointer">
-            <input type="radio" v-model="m.source" value="campaign" class="accent-emerald-600" />
-            📣 Nilai campaign
+          <label class="radio-row">
+            <input type="radio" v-model="m.source" value="campaign" class="radio-accent" />
+            Nilai campaign
           </label>
         </div>
         <div v-if="m.source === 'contact'">
           <label class="field-label">Field kontak</label>
-          <select v-model="m.contact_field" class="field-input !w-auto">
+          <select v-model="m.contact_field" class="field-input w-auto">
             <option value="name">Nama (name)</option>
             <option value="phone">Nomor (phone)</option>
             <option value="tag">Tag</option>
@@ -689,75 +702,81 @@ onMounted(async () => {
         <div v-else>
           <label class="field-label">Nilai (berlaku untuk semua penerima)</label>
           <input v-model="m.value" class="field-input" :placeholder="`Nilai untuk {{${m.variable_name}}}`" />
-          <div v-if="aiResult?.[m.variable_name]" class="field-hint">💡 Prefill dari AI: “{{ aiResult[m.variable_name] }}” — silakan ubah bila perlu.</div>
+          <div v-if="aiResult?.[m.variable_name]" class="field-hint">Prefill dari AI: “{{ aiResult[m.variable_name] }}”. Silakan ubah bila perlu.</div>
         </div>
       </div>
     </section>
 
     <!-- ================= LANGKAH 5: PENERIMA ================= -->
-    <section v-if="step === 5" class="bg-white rounded-xl border border-slate-200 p-6 space-y-4">
-      <h2 class="text-lg font-semibold">5. Pilih Penerima</h2>
+    <section v-if="step === 5" class="card card-pad form-grid">
+      <h2 class="section-title">5. Pilih penerima</h2>
 
       <div v-if="form.is_test_mode">
-        <div class="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-800 mb-4">
-          🧪 <b>Mode test aktif</b> — penerima otomatis memakai nomor test terdaftar. Kontak asli tidak akan menerima pesan.
+        <div class="alert-warning mb-4">
+          <Icon name="flask" :size="15" class="mt-0.5 shrink-0" />
+          <div><b>Mode test aktif.</b> Penerima otomatis memakai nomor test terdaftar. Kontak asli tidak akan menerima pesan.</div>
         </div>
-        <div v-if="recipientsLoading" class="text-sm text-slate-500">Memuat nomor test…</div>
-        <ul v-else class="space-y-2">
-          <li v-for="t in testNums" :key="t.id" class="flex items-center gap-3 border border-slate-200 rounded-lg px-4 py-2.5 text-sm">
-            <span class="text-emerald-600">✓</span>
+        <div v-if="recipientsLoading" class="card-label">Memuat nomor test…</div>
+        <ul v-else class="test-list">
+          <li v-for="t in testNums" :key="t.id" class="test-row">
+            <Icon name="check" :size="14" class="test-check" />
             <span class="font-medium">{{ t.label }}</span>
-            <span class="font-mono text-slate-500">{{ formatPhone(t.phone) }}</span>
+            <span class="mono card-label">{{ formatPhone(t.phone) }}</span>
           </li>
         </ul>
-        <div v-if="!recipientsLoading && !testNums.length" class="text-sm text-slate-400">
-          Belum ada nomor test aktif. Tambahkan di menu <RouterLink to="/test-numbers" class="text-emerald-700 underline">Nomor Test</RouterLink>.
+        <div v-if="!recipientsLoading && !testNums.length" class="empty-inline">
+          Belum ada nomor test aktif. Tambahkan di menu <RouterLink to="/test-numbers" class="row-link">Nomor Test</RouterLink>.
         </div>
       </div>
 
-      <div v-else>
-        <div class="flex flex-wrap items-center gap-3">
-          <input v-model="contactSearch" type="search" placeholder="🔍 Cari nama / nomor…" class="field-input !w-64" />
-          <span class="text-sm text-slate-500">{{ selectedContacts.size }} dari {{ selectableCount }} kontak dipilih</span>
-          <button @click="toggleAll(true)" class="text-sm text-emerald-700 underline">Pilih semua</button>
-          <button @click="toggleAll(false)" class="text-sm text-slate-500 underline">Batalkan semua</button>
+      <div v-else class="form-grid">
+        <div class="recipients-toolbar">
+          <div class="search-wrap">
+            <Icon name="search" :size="15" class="search-icon" />
+            <input v-model="contactSearch" type="search" placeholder="Cari nama / nomor…" class="field-input search-input" />
+          </div>
+          <span class="card-label">{{ selectedContacts.size }} dari {{ selectableCount }} kontak dipilih</span>
+          <button @click="toggleAll(true)" class="btn-tertiary text-sm">Pilih semua</button>
+          <button @click="toggleAll(false)" class="btn-tertiary text-sm">Batalkan semua</button>
         </div>
-        <div class="text-xs text-slate-500">🚫 Kontak blacklist otomatis dikecualikan dan tidak bisa dipilih.</div>
+        <div class="card-label">Kontak blacklist otomatis dikecualikan dan tidak bisa dipilih.</div>
 
-        <!-- Tambah nomor cepat: otomatis tersimpan sebagai kontak (dedup 0812…/​+62812…) -->
-        <div class="border border-dashed border-emerald-300 bg-emerald-50/50 rounded-xl p-4">
-          <div class="text-sm font-medium mb-2">⚡ Tambah nomor cepat <span class="font-normal text-slate-500">— langsung tersimpan sebagai kontak & terpilih</span></div>
-          <div class="flex flex-wrap gap-2">
-            <input v-model="quickName" type="text" placeholder="Nama PIC (opsional)" class="field-input !w-52" />
-            <input v-model="quickPhone" type="tel" placeholder="Nomor WA, mis. 0812…" class="field-input !w-52 font-mono" @keyup.enter="quickAddContact" />
-            <button @click="quickAddContact" :disabled="quickAdding || !quickPhone.trim()" class="btn-primary disabled:opacity-50">
-              {{ quickAdding ? 'Menyimpan…' : '+ Tambah' }}
+        <!-- Tambah nomor cepat: otomatis tersimpan sebagai kontak -->
+        <div class="quickadd">
+          <div class="text-sm font-medium mb-2">Tambah nomor cepat <span class="font-normal card-label">— langsung tersimpan sebagai kontak dan terpilih</span></div>
+          <div class="quickadd-row">
+            <input v-model="quickName" type="text" placeholder="Nama PIC (opsional)" class="field-input" />
+            <input v-model="quickPhone" type="tel" placeholder="Nomor WA, mis. 0812…" class="field-input mono" @keyup.enter="quickAddContact" />
+            <button @click="quickAddContact" :disabled="quickAdding || !quickPhone.trim()" class="btn btn-accent">
+              <Icon name="plus" :size="14" /> {{ quickAdding ? 'Menyimpan…' : 'Tambah' }}
             </button>
           </div>
-          <div class="text-xs text-slate-500 mt-1.5">Nomor otomatis diseragamkan — <span class="font-mono">0812…</span>, <span class="font-mono">+62812…</span>, <span class="font-mono">62812…</span> dianggap nomor yang sama, tidak akan dobel.</div>
+          <div class="field-hint">Nomor otomatis diseragamkan: <span class="mono">0812…</span>, <span class="mono">+62812…</span>, <span class="mono">62812…</span> dianggap nomor yang sama, tidak akan dobel.</div>
         </div>
 
-        <div v-if="recipientsLoading" class="text-sm text-slate-500 text-center py-6">Memuat kontak…</div>
-        <div v-else class="border border-slate-200 rounded-xl divide-y divide-slate-100 max-h-96 overflow-y-auto thin-scroll">
+        <div v-if="recipientsLoading" class="empty-inline">Memuat kontak…</div>
+        <div v-else class="contact-list thin-scroll">
           <label
             v-for="c in visibleContacts"
             :key="c.id"
-            class="flex items-center gap-3 px-4 py-2.5 text-sm"
-            :class="c.is_blacklisted ? 'bg-slate-50 opacity-60' : 'hover:bg-slate-50 cursor-pointer'"
+            class="contact-row"
+            :class="{ disabled: c.is_blacklisted }"
           >
             <input
               type="checkbox"
               :checked="selectedContacts.has(c.id)"
               :disabled="c.is_blacklisted"
               @change="toggleContact(c.id)"
-              class="accent-emerald-600 w-4 h-4"
+              class="check-accent"
             />
-            <span class="font-medium flex-1">{{ c.name }}</span>
-            <span class="font-mono text-slate-500 text-xs">{{ formatPhone(c.phone) }}</span>
-            <span v-if="c.tag" class="text-xs bg-slate-100 px-2 py-0.5 rounded-full">{{ c.tag }}</span>
-            <span v-if="c.is_blacklisted" class="text-xs font-semibold text-red-600">🚫 blacklist — dikecualikan</span>
+            <span class="contact-main">
+              <span class="font-medium">{{ c.name }}</span>
+              <span class="mono card-label">{{ formatPhone(c.phone) }}</span>
+            </span>
+            <span v-if="c.tag" class="pill pill-neutral">{{ c.tag }}</span>
+            <span v-if="c.is_blacklisted" class="pill pill-negative">Blacklist</span>
           </label>
-          <div v-if="!visibleContacts.length" class="px-4 py-6 text-sm text-slate-400 text-center">
+          <div v-if="!visibleContacts.length" class="empty-inline">
             Tidak ada kontak yang cocok.
           </div>
         </div>
@@ -765,93 +784,99 @@ onMounted(async () => {
     </section>
 
     <!-- ================= LANGKAH 6: REVIEW ================= -->
-    <section v-if="step === 6" class="space-y-4">
-      <h2 class="text-lg font-semibold">6. Review & Konfirmasi</h2>
+    <section v-if="step === 6" class="form-grid">
+      <h2 class="section-title">6. Review & konfirmasi</h2>
 
-      <div v-if="reviewLoading" class="bg-white rounded-xl border border-slate-200 p-10 text-center text-sm text-slate-500">
-        Menyusun pratinjau campaign…
+      <div v-if="reviewLoading" class="card card-pad">
+        <div class="grid gap-3">
+          <span class="skeleton" style="height: 24px; width: 40%"></span>
+          <span class="skeleton" style="height: 14px; width: 90%"></span>
+          <span class="skeleton" style="height: 14px; width: 70%"></span>
+        </div>
       </div>
 
       <template v-else-if="review">
         <!-- Banner mode test -->
-        <div v-if="rvCampaign.is_test_mode" class="bg-amber-100 border-2 border-amber-400 rounded-xl px-4 py-3">
-          <div class="font-bold text-amber-800">🧪 MODE TEST AKTIF</div>
-          <div class="text-sm text-amber-700">Pesan hanya dikirim ke nomor test terdaftar — bukan ke kontak asli.</div>
+        <div v-if="rvCampaign.is_test_mode" class="alert-warning">
+          <Icon name="flask" :size="15" class="mt-0.5 shrink-0" />
+          <div><div class="alert-title">Mode test aktif</div><div class="text-sm mt-0.5">Pesan hanya dikirim ke nomor test terdaftar, bukan ke kontak asli.</div></div>
         </div>
 
         <!-- Banner risiko banned -->
-        <div v-if="rvCampaign.provider === 'unofficial'" class="bg-red-100 border-2 border-red-400 rounded-xl px-4 py-3">
-          <div class="font-bold text-red-700">⚠️ JALUR NON-RESMI — RISIKO BANNED</div>
-          <div class="text-sm text-red-600">
-            Pengiriman via jalur tidak resmi. Nomor pengirim bisa di-banned WhatsApp. Pastikan memakai nomor testing khusus,
-            bukan nomor utama/pribadi.
+        <div v-if="rvCampaign.provider === 'unofficial'" class="alert-negative">
+          <Icon name="alert" :size="15" class="mt-0.5 shrink-0" />
+          <div>
+            <div class="alert-title">Jalur non-resmi: risiko banned</div>
+            <div class="text-sm mt-0.5">
+              Pengiriman via jalur tidak resmi. Nomor pengirim bisa di-banned WhatsApp. Pastikan memakai nomor testing khusus,
+              bukan nomor utama/pribadi.
+            </div>
           </div>
         </div>
 
         <!-- Ringkasan -->
-        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          <div class="bg-white rounded-xl border border-slate-200 p-4">
-            <div class="text-xs text-slate-500">Total penerima</div>
-            <div class="text-2xl font-bold mt-1">{{ formatNumber(rvTotal) }}</div>
+        <div class="kpi-strip kpi-4">
+          <div class="kpi-cell">
+            <div class="kpi-label">Total penerima</div>
+            <div class="kpi-value num">{{ formatNumber(rvTotal) }}</div>
           </div>
-          <div class="bg-white rounded-xl border border-slate-200 p-4">
-            <div class="text-xs text-slate-500">Estimasi durasi kirim</div>
-            <div class="text-2xl font-bold mt-1">{{ formatDuration(rvDurationSec) }}</div>
-            <div class="text-xs text-slate-400 mt-0.5">±10 dtk/pesan + batas rate</div>
+          <div class="kpi-cell">
+            <div class="kpi-label">Estimasi durasi kirim</div>
+            <div class="kpi-value num">{{ formatDuration(rvDurationSec) }}</div>
+            <div class="kpi-cap">±10 dtk/pesan + batas rate</div>
           </div>
-          <div class="bg-white rounded-xl border border-slate-200 p-4">
-            <div class="text-xs text-slate-500">Estimasi biaya</div>
-            <div class="text-2xl font-bold mt-1" :class="rvCost === 0 ? 'text-emerald-600' : ''">
-              {{ rvCampaign.provider === 'unofficial' ? 'Rp 0 (jalur gratis)' : formatRupiah(rvCost) }}
+          <div class="kpi-cell">
+            <div class="kpi-label">Estimasi biaya</div>
+            <div class="kpi-value num" :class="{ 'kpi-free': rvCost === 0 }">
+              {{ rvCampaign.provider === 'unofficial' ? 'Rp 0' : formatRupiah(rvCost) }}
             </div>
-            <div v-if="rvCampaign.provider === 'official'" class="text-xs text-slate-400 mt-0.5">
-              {{ formatRupiah(rvPricePerMsg) }}/pesan · kategori {{ rvCategory }}
-            </div>
+            <div class="kpi-cap">{{ rvCampaign.provider === 'unofficial' ? 'jalur gratis' : `${formatRupiah(rvPricePerMsg)}/pesan · ${rvCategory}` }}</div>
           </div>
-          <div class="bg-white rounded-xl border border-slate-200 p-4">
-            <div class="text-xs text-slate-500">Template</div>
-            <div class="font-semibold mt-1 truncate">{{ selectedVersion?.template?.name || '–' }}</div>
-            <div class="text-xs text-slate-400 mt-0.5">
-              v{{ selectedVersion?.version?.version_number }} · <StatusPill :status="rvCampaign.provider" />
-            </div>
+          <div class="kpi-cell">
+            <div class="kpi-label">Template</div>
+            <div class="kpi-value truncate-1">{{ selectedVersion?.template?.name || '–' }}</div>
+            <div class="kpi-cap">v{{ selectedVersion?.version?.version_number }} · <StatusPill :status="rvCampaign.provider" /></div>
           </div>
         </div>
 
         <!-- Error validasi -->
-        <div v-if="rvErrors.length" class="bg-red-50 border-2 border-red-300 rounded-xl px-4 py-3">
-          <div class="font-bold text-red-700 text-sm mb-1">⛔ Campaign belum bisa dikonfirmasi — perbaiki dulu:</div>
-          <ul class="list-disc list-inside text-sm text-red-600 space-y-0.5">
-            <li v-for="(e, i) in rvErrors" :key="i">{{ typeof e === 'string' ? e : e.message || JSON.stringify(e) }}</li>
-          </ul>
+        <div v-if="rvErrors.length" class="alert-negative">
+          <Icon name="alert" :size="15" class="mt-0.5 shrink-0" />
+          <div>
+            <div class="alert-title">Campaign belum bisa dikonfirmasi. Perbaiki dulu:</div>
+            <ul class="list-disc list-inside text-sm mt-1 space-y-0.5">
+              <li v-for="(e, i) in rvErrors" :key="i">{{ typeof e === 'string' ? e : e.message || JSON.stringify(e) }}</li>
+            </ul>
+          </div>
         </div>
 
         <!-- Tabel penerima × variabel -->
-        <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
-          <div class="px-4 py-3 border-b border-slate-200 font-semibold text-sm">
+        <div class="tbl-wrap">
+          <div class="tbl-title">
             Tabel penerima × nilai variabel
-            <span class="font-normal text-slate-400">({{ formatNumber(rvTotal) }} penerima)</span>
+            <span class="font-normal card-label">({{ formatNumber(rvTotal) }} penerima)</span>
           </div>
-          <div class="overflow-auto thin-scroll max-h-96">
-            <table class="w-full text-sm min-w-[600px]">
-              <thead class="sticky top-0 bg-slate-50">
-                <tr class="text-left text-xs uppercase tracking-wide text-slate-500">
-                  <th class="px-4 py-2 font-semibold">#</th>
-                  <th class="px-4 py-2 font-semibold">Nama</th>
-                  <th class="px-4 py-2 font-semibold">Nomor</th>
-                  <th v-for="vn in rvVarNames" :key="vn" class="px-4 py-2 font-semibold font-mono normal-case">{{ wrapVar(vn) }}</th>
+          <div class="tbl-scroll thin-scroll max-h-96">
+            <table class="tbl min-w-[600px]">
+              <thead class="sticky top-0" style="background: var(--surface)">
+                <tr>
+                  <th>#</th>
+                  <th>Nama</th>
+                  <th>Nomor</th>
+                  <th v-for="vn in rvVarNames" :key="vn" class="mono">{{ wrapVar(vn) }}</th>
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="(row, i) in rvTable" :key="row.id || i" class="border-t border-slate-100 hover:bg-slate-50">
-                  <td class="px-4 py-2 text-slate-400">{{ i + 1 }}</td>
-                  <td class="px-4 py-2">{{ row.name || row.contact_name || '–' }}</td>
-                  <td class="px-4 py-2 font-mono text-xs">{{ row.phone }}</td>
-                  <td v-for="vn in rvVarNames" :key="vn" class="px-4 py-2 max-w-48 truncate" :title="String(row.values?.[vn] ?? '')">
+                <tr v-for="(row, i) in rvTable" :key="row.id || i">
+                  <td class="card-label">{{ i + 1 }}</td>
+                  <td class="row-title">{{ row.name || row.contact_name || '–' }}</td>
+                  <td class="mono text-xs">{{ row.phone }}</td>
+                  <td v-for="vn in rvVarNames" :key="vn" class="max-w-48 truncate" :title="String(row.values?.[vn] ?? '')">
                     {{ row.values?.[vn] ?? '–' }}
                   </td>
                 </tr>
                 <tr v-if="!rvTable.length">
-                  <td :colspan="3 + rvVarNames.length" class="px-4 py-8 text-center text-sm text-slate-400">
+                  <td :colspan="3 + rvVarNames.length" class="empty-inline" style="border:0">
                     Tidak ada data penerima pada pratinjau.
                   </td>
                 </tr>
@@ -861,61 +886,53 @@ onMounted(async () => {
         </div>
 
         <!-- Sample pesan -->
-        <div class="bg-white rounded-xl border border-slate-200 p-4">
-          <div class="font-semibold text-sm mb-3">Contoh pesan ter-render (5 sample)</div>
-          <div v-if="!rvSamples.length" class="text-sm text-slate-400">Tidak ada sample dari backend.</div>
-          <div class="grid md:grid-cols-2 gap-4">
-            <div v-for="(s, i) in rvSamples.slice(0, 5)" :key="i" class="bg-[#ece5dd] rounded-xl p-4">
-              <div class="text-xs text-slate-500 mb-2">Sample {{ i + 1 }} — {{ typeof s === 'object' ? (s.phone || s.name) : '' }}</div>
-              <div class="wa-bubble text-sm whitespace-pre-wrap">{{ typeof s === 'object' ? (s.message || s.body || s.rendered) : s }}</div>
+        <div class="card card-pad">
+          <div class="section-title mb-3">Contoh pesan ter-render (5 sample)</div>
+          <div v-if="!rvSamples.length" class="card-label">Tidak ada sample dari backend.</div>
+          <div class="sample-grid">
+            <div v-for="(s, i) in rvSamples.slice(0, 5)" :key="i" class="sample-wa">
+              <div class="card-label mb-2">Sample {{ i + 1 }} — {{ typeof s === 'object' ? (s.phone || s.name) : '' }}</div>
+              <div class="wa-bubble text-sm whitespace-pre-wrap">{{ typeof s === 'object' ? (s.message || s.body || s.rendered) : s }}<span class="wa-time">{{ sampleTime }}</span></div>
             </div>
           </div>
         </div>
 
         <!-- Tombol aksi -->
-        <div class="flex flex-wrap justify-end gap-2">
+        <div class="review-actions">
           <button
             v-if="hasSendAt"
             @click="openConfirm('schedule')"
             :disabled="rvErrors.length > 0"
-            class="px-5 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-sm disabled:opacity-40 disabled:cursor-not-allowed"
+            class="btn btn-secondary"
           >
-            🗓️ Jadwalkan
+            <Icon name="calendar" :size="15" /> Jadwalkan
           </button>
           <button
             @click="openConfirm('blast')"
             :disabled="rvErrors.length > 0"
-            class="px-5 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm disabled:opacity-40 disabled:cursor-not-allowed"
+            class="btn btn-accent"
           >
-            {{ hasSendAt ? 'Konfirmasi & Blast (terjadwal)' : 'Konfirmasi & Blast' }}
+            <Icon name="send" :size="15" /> {{ hasSendAt ? 'Konfirmasi & blast (terjadwal)' : 'Konfirmasi & blast' }}
           </button>
         </div>
-        <div v-if="rvErrors.length" class="text-xs text-red-500 text-right">
+        <div v-if="rvErrors.length" class="field-error text-right">
           Tombol konfirmasi terkunci sampai semua error validasi diperbaiki.
         </div>
       </template>
     </section>
 
     <!-- Navigasi bawah -->
-    <div v-if="step < 6" class="flex justify-between mt-6">
-      <button
-        @click="back"
-        :disabled="step === 1 || loading"
-        class="px-5 py-2.5 rounded-lg border border-slate-300 text-sm font-medium hover:bg-white disabled:opacity-40"
-      >
-        ← Kembali
+    <div v-if="step < 6" class="wizard-nav">
+      <button @click="back" :disabled="step === 1 || loading" class="btn btn-secondary">
+        <Icon name="chevron-left" :size="15" /> Kembali
       </button>
-      <button
-        @click="next"
-        :disabled="loading"
-        class="px-5 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm disabled:opacity-50"
-      >
-        {{ loading ? 'Memproses…' : step === 5 ? 'Lanjut ke Review →' : 'Lanjut →' }}
+      <button @click="next" :disabled="loading" class="btn btn-accent">
+        {{ loading ? 'Memproses…' : step === 5 ? 'Lanjut ke review' : 'Lanjut' }} <Icon v-if="!loading" name="chevron-right" :size="15" />
       </button>
     </div>
-    <div v-else class="flex justify-start mt-6">
-      <button @click="back" class="px-5 py-2.5 rounded-lg border border-slate-300 text-sm font-medium hover:bg-white">
-        ← Kembali ke Penerima
+    <div v-else class="wizard-nav wizard-nav-start">
+      <button @click="back" class="btn btn-secondary">
+        <Icon name="chevron-left" :size="15" /> Kembali ke penerima
       </button>
     </div>
 
@@ -932,3 +949,156 @@ onMounted(async () => {
     />
   </div>
 </template>
+
+<style scoped>
+.wizard { max-width: 1024px; margin: 0 auto; }
+.form-grid { display: grid; gap: 20px; }
+
+/* Step indicator */
+.steps {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-bottom: 28px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+.step { display: flex; align-items: center; flex: none; }
+.step-btn {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 12px;
+  border-radius: var(--radius-control);
+  background: transparent; border: 0; cursor: pointer;
+  font-size: 13px; color: var(--faint);
+  white-space: nowrap;
+}
+.step-btn:hover { background: var(--raised); }
+.step.current .step-btn { background: var(--accent-soft); color: var(--accent-ink); font-weight: 600; }
+.step.done .step-btn { color: var(--accent-ink); }
+.step-mark {
+  width: 24px; height: 24px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--raised); color: var(--faint); flex: none;
+}
+.step.current .step-mark { background: var(--accent); color: #fff; }
+.step.done .step-mark { background: var(--accent-soft); }
+.step-num { font-size: 12px; font-weight: 600; }
+.step.current .step-num { color: #fff; }
+.step-label { font-size: 13px; }
+.step-sep { margin: 0 4px; color: var(--control); }
+
+/* Provider cards */
+.provider-grid { display: grid; gap: 12px; }
+@media (min-width: 768px) { .provider-grid { grid-template-columns: 1fr 1fr; } }
+.provider-card {
+  border: 1px solid var(--control);
+  border-radius: var(--radius-card);
+  padding: 16px;
+  cursor: pointer;
+  display: block;
+}
+.provider-card:hover { border-color: var(--faint); }
+.provider-card.selected { border-color: var(--accent); background: var(--accent-soft); }
+.provider-card.selected .provider-check { color: var(--accent); }
+.provider-head { display: flex; align-items: center; gap: 8px; }
+.provider-check { color: var(--faint); flex: none; }
+.provider-points {
+  font-size: 12px; color: var(--muted);
+  margin: 8px 0 0 26px; padding: 0;
+  display: grid; gap: 4px; list-style: disc inside;
+}
+.radio-accent, .check-accent { accent-color: var(--accent); width: 16px; height: 16px; flex: none; }
+.check-row {
+  display: flex; align-items: flex-start; gap: 12px;
+  border: 1px solid var(--border); border-radius: var(--radius-card);
+  padding: 14px 16px; cursor: pointer;
+}
+.check-row:hover { border-color: var(--control); }
+
+/* Template */
+.tpl-group { border: 1px solid var(--border); border-radius: var(--radius-card); margin-bottom: 12px; overflow: hidden; }
+.tpl-head {
+  width: 100%; display: flex; align-items: center; gap: 10px;
+  padding: 12px 16px; background: transparent; border: 0; cursor: pointer;
+  font-size: 14px; color: var(--text); text-align: left;
+}
+.tpl-head:hover { background: var(--ground); }
+.tpl-versions { border-top: 1px solid var(--rule); padding: 12px 16px; display: grid; gap: 8px; background: var(--ground); }
+.version-card {
+  display: block; border: 1px solid var(--border); border-radius: var(--radius-card);
+  padding: 12px; cursor: pointer; background: var(--surface);
+}
+.version-card:hover { border-color: var(--control); }
+.version-card.selected { border-color: var(--accent); background: var(--accent-soft); }
+.version-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.version-body {
+  white-space: pre-wrap; font-size: 12px; color: var(--muted);
+  margin: 8px 0 0; font-family: var(--font);
+}
+
+/* Mapping */
+.mapping-card {
+  border: 1px solid var(--border); border-radius: var(--radius-card);
+  padding: 16px; display: grid; gap: 12px;
+}
+.mapping-sources { display: flex; flex-wrap: wrap; gap: 16px; font-size: 14px; }
+.radio-row { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+
+/* Penerima */
+.recipients-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.search-wrap { position: relative; }
+.search-icon { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--faint); pointer-events: none; }
+.search-input { width: 240px; padding-left: 36px; min-height: 34px; }
+.quickadd {
+  border: 1px dashed var(--accent-track);
+  background: var(--accent-soft);
+  border-radius: var(--radius-card);
+  padding: 16px;
+}
+.quickadd-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.quickadd-row .field-input { flex: 1 1 160px; }
+.test-list { display: grid; gap: 8px; list-style: none; margin: 0; padding: 0; }
+.test-row {
+  display: flex; align-items: center; gap: 12px;
+  border: 1px solid var(--border); border-radius: var(--radius-card);
+  padding: 10px 16px; font-size: 14px;
+}
+.test-check { color: var(--accent); flex: none; }
+.contact-list {
+  border: 1px solid var(--border); border-radius: var(--radius-card);
+  max-height: 384px; overflow-y: auto;
+}
+.contact-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 16px; font-size: 14px; cursor: pointer;
+  border-top: 1px solid var(--rule);
+}
+.contact-row:first-child { border-top: 0; }
+.contact-row:hover { background: var(--ground); }
+.contact-row.disabled { opacity: 0.55; cursor: not-allowed; }
+.contact-main { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
+
+/* Review */
+.kpi-4 { grid-template-columns: repeat(4, 1fr); }
+.kpi-free { color: var(--accent-ink); }
+.truncate-1 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 18px; }
+.sample-grid { display: grid; gap: 16px; }
+@media (min-width: 768px) { .sample-grid { grid-template-columns: 1fr 1fr; } }
+.sample-wa { background: #ece5dd; border-radius: var(--radius-card); padding: 16px; }
+.review-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.wizard-nav { display: flex; justify-content: space-between; margin-top: 24px; gap: 8px; }
+.wizard-nav-start { justify-content: flex-start; }
+
+@media (max-width: 1023px) {
+  .kpi-4 { grid-template-columns: repeat(2, 1fr); }
+  .kpi-4 > .kpi-cell:nth-child(odd) { border-left: 0; }
+  .kpi-4 > .kpi-cell:nth-child(n+3) { border-top: 1px solid var(--rule); }
+}
+@media (max-width: 639px) {
+  .wizard-nav { position: sticky; bottom: 0; background: var(--ground); padding: 12px 0; border-top: 1px solid var(--rule); }
+  .wizard-nav .btn { flex: 1; }
+  .review-actions .btn { flex: 1; }
+  .search-input { width: 100%; }
+  .search-wrap { flex: 1; }
+}
+</style>

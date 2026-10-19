@@ -2,6 +2,8 @@
 /**
  * Modal generik dengan ukuran yang bisa diatur.
  */
+import Icon from './Icon.vue'
+
 defineProps({
   open: { type: Boolean, default: false },
   title: { type: String, default: '' },
@@ -15,19 +17,19 @@ defineEmits(['close'])
     <div v-if="open" class="fixed inset-0 z-[90] flex items-center justify-center p-4">
       <div class="absolute inset-0 bg-black/50" @click="$emit('close')"></div>
       <div
-        class="relative bg-white rounded-2xl shadow-xl w-full max-h-[90vh] flex flex-col"
+        class="modal-panel"
         :class="maxWidth"
       >
-        <div class="flex items-center justify-between px-6 py-4 border-b border-slate-200">
-          <h3 class="text-lg font-semibold">{{ title }}</h3>
-          <button @click="$emit('close')" class="text-slate-400 hover:text-slate-700 text-2xl leading-none" aria-label="Tutup">
-            ×
+        <div class="modal-head">
+          <h3 class="section-title">{{ title }}</h3>
+          <button @click="$emit('close')" class="modal-x" aria-label="Tutup">
+            <Icon name="x" :size="18" />
           </button>
         </div>
-        <div class="px-6 py-5 overflow-y-auto thin-scroll">
+        <div class="modal-body thin-scroll">
           <slot />
         </div>
-        <div v-if="$slots.footer" class="px-6 py-4 border-t border-slate-200 flex justify-end gap-2">
+        <div v-if="$slots.footer" class="modal-foot">
           <slot name="footer" />
         </div>
       </div>

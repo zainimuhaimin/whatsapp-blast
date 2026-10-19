@@ -7,6 +7,7 @@ import DataTable from '../components/DataTable.vue'
 import Modal from '../components/Modal.vue'
 import StatusPill from '../components/StatusPill.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
+import Icon from '../components/Icon.vue'
 
 const toast = useToast()
 const templates = ref([])
@@ -150,44 +151,39 @@ onMounted(load)
 
 <template>
   <div>
-    <div class="flex flex-wrap items-center justify-between gap-3 mb-6">
+    <div class="title-row">
       <div>
-        <h1 class="text-2xl font-bold">Template</h1>
-        <p class="text-sm text-slate-500">Template pesan dengan variabel {{nama}}. Setiap ubah isi = versi baru (immutable).</p>
+        <h1 class="page-title">Template</h1>
+        <p class="page-sub">Template pesan dengan variabel {{nama}}. Setiap ubah isi = versi baru.</p>
       </div>
-      <button
-        @click="openCreate"
-        class="px-4 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm transition-colors"
-      >
-        ➕ Template Baru
+      <button @click="openCreate" class="btn btn-accent">
+        <Icon name="plus" :size="15" /> Template baru
       </button>
     </div>
 
-    <div class="grid lg:grid-cols-5 gap-4">
+    <div class="tpl-layout">
       <!-- Daftar template -->
-      <div class="lg:col-span-2">
-        <DataTable :loading="loading" empty-title="Belum ada template" empty-hint="Buat template pertama untuk dipakai campaign." empty-icon="📝">
+      <div class="tpl-list" :class="{ 'hidden-mobile': selected }">
+        <DataTable :loading="loading" empty-title="Belum ada template" empty-hint="Buat template pertama untuk dipakai campaign." empty-icon="chat">
           <template #head>
-            <th class="px-4 py-3 font-semibold">Nama</th>
-            <th class="px-4 py-3 font-semibold">Versi</th>
-            <th class="px-4 py-3 font-semibold">Status</th>
+            <th>Nama</th>
+            <th>Versi</th>
+            <th>Status</th>
           </template>
           <template v-if="templates.length">
             <tr
               v-for="t in templates"
               :key="t.id"
               @click="select(t)"
-              class="border-t border-slate-100 hover:bg-slate-50 cursor-pointer"
-              :class="selected?.id === t.id ? 'bg-emerald-50' : ''"
+              class="row-selectable"
+              :class="{ 'row-selected': selected?.id === t.id }"
             >
-              <td class="px-4 py-3">
-                <div class="font-medium">{{ t.name }}</div>
-                <div class="text-xs text-slate-400">{{ truncate(t.description, 50) }}</div>
+              <td>
+                <div class="row-title">{{ t.name }}</div>
+                <div class="row-sub">{{ truncate(t.description, 50) }}</div>
               </td>
-              <td class="px-4 py-3 text-sm">
-                v{{ latestVersion(t)?.version_number ?? '1' }}
-              </td>
-              <td class="px-4 py-3">
+              <td class="text-sm num">v{{ latestVersion(t)?.version_number ?? '1' }}</td>
+              <td>
                 <StatusPill :status="latestVersion(t)?.approval_status || 'draft'" />
               </td>
             </tr>
@@ -196,62 +192,65 @@ onMounted(load)
       </div>
 
       <!-- Detail template -->
-      <div class="lg:col-span-3">
-        <div v-if="!selected" class="bg-white rounded-xl border border-slate-200 p-10 text-center text-slate-400 text-sm">
+      <div class="tpl-detail" :class="{ 'show-mobile': selected }">
+        <button v-if="selected" @click="selected = null" class="back-link back-mobile">
+          <Icon name="chevron-left" :size="14" /> Daftar template
+        </button>
+
+        <div v-if="!selected" class="empty-inline">
           Pilih template di sebelah kiri untuk melihat detail & riwayat versi.
         </div>
 
-        <div v-else class="bg-white rounded-xl border border-slate-200 p-6">
-          <div class="flex flex-wrap items-start justify-between gap-3 mb-4">
-            <div>
-              <h2 class="text-xl font-bold">{{ selected.name }}</h2>
-              <p v-if="selected.description" class="text-sm text-slate-500 mt-1">{{ selected.description }}</p>
-              <div class="text-xs text-slate-400 mt-1">Diperbarui {{ formatDateTime(selected.updated_at) }}</div>
+        <div v-else class="card card-pad">
+          <div class="detail-head">
+            <div class="min-w-0">
+              <h2 class="section-title text-lg">{{ selected.name }}</h2>
+              <p v-if="selected.description" class="card-label mt-1">{{ selected.description }}</p>
+              <div class="card-label mt-1 text-xs">Diperbarui {{ formatDateTime(selected.updated_at) }}</div>
             </div>
-            <div class="flex gap-2">
-              <button @click="openEdit(selected)" class="px-3 py-1.5 text-sm rounded-lg border border-slate-300 hover:bg-slate-50">✏️ Ubah</button>
-              <button @click="confirmDelete = selected" class="px-3 py-1.5 text-sm rounded-lg border border-red-200 text-red-600 hover:bg-red-50">🗑️ Hapus</button>
+            <div class="detail-actions">
+              <button @click="openEdit(selected)" class="btn btn-secondary btn-sm">
+                <Icon name="pencil" :size="14" /> Ubah
+              </button>
+              <button @click="confirmDelete = selected" class="btn btn-danger btn-sm">Hapus</button>
             </div>
           </div>
 
-          <div class="flex items-center justify-between mb-2">
-            <h3 class="font-semibold">Riwayat Versi</h3>
-            <button
-              @click="showVersionModal = true"
-              class="px-3 py-1.5 text-sm rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-medium"
-            >
-              ➕ Versi Baru
+          <div class="detail-head mt-6 mb-2">
+            <h3 class="section-title">Riwayat versi</h3>
+            <button @click="showVersionModal = true" class="btn btn-accent btn-sm">
+              <Icon name="plus" :size="14" /> Versi baru
             </button>
           </div>
 
-          <div v-if="versionsLoading" class="text-sm text-slate-500 py-4 text-center">Memuat versi…</div>
-          <div v-else-if="!versions.length" class="text-sm text-slate-400 py-4 text-center">Belum ada versi.</div>
-          <div v-else class="space-y-3">
+          <div v-if="versionsLoading" class="card-label py-4 text-center">Memuat versi…</div>
+          <div v-else-if="!versions.length" class="empty-inline">Belum ada versi.</div>
+          <div v-else class="version-list">
             <details
               v-for="v in versions"
               :key="v.id || v.version_number"
-              class="border border-slate-200 rounded-lg"
+              class="version-item"
               :open="v.version_number === versions[0]?.version_number"
             >
-              <summary class="px-4 py-3 cursor-pointer flex flex-wrap items-center gap-3 hover:bg-slate-50 rounded-lg">
+              <summary class="version-summary">
                 <span class="font-semibold text-sm">Versi {{ v.version_number }}</span>
                 <StatusPill :status="v.approval_status || 'draft'" />
-                <span v-if="v.provider_category" class="text-xs bg-slate-100 px-2 py-0.5 rounded-full">{{ v.provider_category }}</span>
-                <span v-if="v.provider_template_name" class="text-xs text-slate-500 font-mono">{{ v.provider_template_name }}</span>
-                <span class="ml-auto text-xs text-slate-400">{{ formatDateTime(v.created_at) }}</span>
+                <span v-if="v.provider_category" class="pill pill-neutral">{{ v.provider_category }}</span>
+                <span v-if="v.provider_template_name" class="mono text-xs card-label">{{ v.provider_template_name }}</span>
+                <span class="card-label text-xs ml-auto">{{ formatDateTime(v.created_at) }}</span>
               </summary>
-              <div class="px-4 pb-4 pt-1 border-t border-slate-100">
-                <pre class="whitespace-pre-wrap text-sm bg-slate-50 rounded-lg p-3 mt-3 font-sans">{{ v.body }}</pre>
+              <div class="version-body-wrap">
+                <pre class="version-pre">{{ v.body }}</pre>
                 <div class="mt-3">
-                  <div class="text-xs font-semibold text-slate-600 mb-1">Variabel terekstrak:</div>
-                  <div v-if="(v.variables || extractVariables(v.body)).length" class="flex flex-wrap gap-1.5">
+                  <div class="card-label mb-1">Variabel terekstrak:</div>
+                  <div v-if="(v.variables || extractVariables(v.body)).length" class="chip-row">
                     <code
                       v-for="name in (v.variables || extractVariables(v.body))"
                       :key="name"
-                      class="text-xs bg-emerald-50 text-emerald-800 border border-emerald-200 px-2 py-0.5 rounded"
+                      class="var-chip"
                     >{{ wrapVar(name) }}</code>
                   </div>
-                  <div v-else class="text-xs text-slate-400">Tidak ada variabel.</div>
+                  <div v-else class="card-label text-xs">Tidak ada variabel.</div>
                 </div>
               </div>
             </details>
@@ -261,8 +260,8 @@ onMounted(load)
     </div>
 
     <!-- Modal tambah/ubah template -->
-    <Modal :open="showModal" :title="editing ? 'Ubah Template' : 'Template Baru'" @close="showModal = false" maxWidth="max-w-2xl">
-      <div class="space-y-4">
+    <Modal :open="showModal" :title="editing ? 'Ubah template' : 'Template baru'" @close="showModal = false" maxWidth="max-w-2xl">
+      <div class="form-grid">
         <div>
           <label class="field-label">Nama *</label>
           <input v-model="form.name" class="field-input" placeholder="mis. Promo Diskon" />
@@ -274,45 +273,48 @@ onMounted(load)
         </div>
         <div v-if="!editing">
           <label class="field-label">Isi pesan (versi 1) *</label>
-          <textarea v-model="form.body" rows="6" class="field-input font-mono" placeholder="Halo {{name}}, ada promo {{promo}} khusus untukmu!"></textarea>
+          <textarea v-model="form.body" rows="6" class="field-input mono" placeholder="Halo {{name}}, ada promo {{promo}} khusus untukmu!"></textarea>
           <div class="field-hint">Gunakan {{nama_variabel}} untuk bagian yang dinamis.</div>
           <div v-if="formErrors.body" class="field-error">{{ formErrors.body }}</div>
           <div v-if="liveVariables.length" class="mt-2">
-            <div class="text-xs font-semibold text-slate-600 mb-1">Variabel terdeteksi:</div>
-            <div class="flex flex-wrap gap-1.5">
-              <code v-for="name in liveVariables" :key="name" class="text-xs bg-emerald-50 text-emerald-800 border border-emerald-200 px-2 py-0.5 rounded">{{ wrapVar(name) }}</code>
+            <div class="card-label mb-1">Variabel terdeteksi:</div>
+            <div class="chip-row">
+              <code v-for="name in liveVariables" :key="name" class="var-chip">{{ wrapVar(name) }}</code>
             </div>
           </div>
         </div>
-        <div v-else class="text-sm text-slate-500 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-          ℹ️ Isi pesan tidak bisa diubah langsung — buat <b>Versi Baru</b> dari panel detail untuk mengubah isi.
+        <div v-else class="alert-warning">
+          <Icon name="info" :size="15" class="mt-0.5 shrink-0" />
+          <span class="text-sm">Isi pesan tidak bisa diubah langsung. Buat <b>Versi Baru</b> dari panel detail untuk mengubah isi.</span>
         </div>
       </div>
       <template #footer>
-        <button @click="showModal = false" class="px-4 py-2 rounded-lg border border-slate-300 text-sm font-medium hover:bg-slate-50">Batal</button>
-        <button @click="save" :disabled="saving" class="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium disabled:opacity-50">
+        <button @click="showModal = false" class="btn btn-secondary">Batal</button>
+        <button @click="save" :disabled="saving" class="btn btn-accent">
           {{ saving ? 'Menyimpan…' : 'Simpan' }}
         </button>
       </template>
     </Modal>
 
     <!-- Modal versi baru -->
-    <Modal :open="showVersionModal" title="Buat Versi Baru" @close="showVersionModal = false" maxWidth="max-w-2xl">
-      <div class="space-y-3">
-        <div class="text-sm text-slate-500">Versi lama bersifat immutable — campaign yang sudah memakai versi lama tidak berubah.</div>
-        <label class="field-label">Isi pesan *</label>
-        <textarea v-model="newVersionBody" rows="8" class="field-input font-mono" placeholder="Halo {{name}}, …"></textarea>
+    <Modal :open="showVersionModal" title="Buat versi baru" @close="showVersionModal = false" maxWidth="max-w-2xl">
+      <div class="form-grid">
+        <div class="card-label text-sm">Versi lama bersifat immutable. Campaign yang sudah memakai versi lama tidak berubah.</div>
+        <div>
+          <label class="field-label">Isi pesan *</label>
+          <textarea v-model="newVersionBody" rows="8" class="field-input mono" placeholder="Halo {{name}}, …"></textarea>
+        </div>
         <div v-if="versionVariables.length">
-          <div class="text-xs font-semibold text-slate-600 mb-1">Variabel terdeteksi:</div>
-          <div class="flex flex-wrap gap-1.5">
-            <code v-for="name in versionVariables" :key="name" class="text-xs bg-emerald-50 text-emerald-800 border border-emerald-200 px-2 py-0.5 rounded">{{ wrapVar(name) }}</code>
+          <div class="card-label mb-1">Variabel terdeteksi:</div>
+          <div class="chip-row">
+            <code v-for="name in versionVariables" :key="name" class="var-chip">{{ wrapVar(name) }}</code>
           </div>
         </div>
       </div>
       <template #footer>
-        <button @click="showVersionModal = false" class="px-4 py-2 rounded-lg border border-slate-300 text-sm font-medium hover:bg-slate-50">Batal</button>
-        <button @click="createVersion" :disabled="creatingVersion" class="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium disabled:opacity-50">
-          {{ creatingVersion ? 'Membuat…' : 'Buat Versi' }}
+        <button @click="showVersionModal = false" class="btn btn-secondary">Batal</button>
+        <button @click="createVersion" :disabled="creatingVersion" class="btn btn-accent">
+          {{ creatingVersion ? 'Membuat…' : 'Buat versi' }}
         </button>
       </template>
     </Modal>
@@ -330,3 +332,51 @@ onMounted(load)
     />
   </div>
 </template>
+
+<style scoped>
+.title-row {
+  display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between;
+  gap: 12px; margin-bottom: 24px;
+}
+.tpl-layout { display: grid; gap: 16px; }
+@media (min-width: 1024px) { .tpl-layout { grid-template-columns: 2fr 3fr; } }
+.row-selectable { cursor: pointer; }
+.row-selectable.row-selected td { background: var(--accent-soft); }
+.form-grid { display: grid; gap: 16px; }
+.detail-head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.detail-actions { display: flex; gap: 8px; }
+.btn-sm { min-height: 32px; padding: 0 12px; font-size: 13px; }
+.version-list { display: grid; gap: 12px; }
+.version-item { border: 1px solid var(--border); border-radius: var(--radius-card); overflow: hidden; }
+.version-summary {
+  padding: 12px 16px; cursor: pointer;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 12px;
+  list-style: none;
+}
+.version-summary::-webkit-details-marker { display: none; }
+.version-summary:hover { background: var(--ground); }
+.version-body-wrap { padding: 4px 16px 16px; border-top: 1px solid var(--rule); }
+.version-pre {
+  white-space: pre-wrap; font-size: 14px;
+  background: var(--ground); border-radius: var(--radius-control);
+  padding: 12px; margin-top: 12px; font-family: var(--font);
+}
+.chip-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.var-chip {
+  font-size: 12px; font-family: var(--font-mono);
+  background: var(--accent-soft); color: var(--accent-ink);
+  border: 1px solid var(--accent-track);
+  padding: 2px 8px; border-radius: 4px;
+}
+.back-link {
+  display: none; align-items: center; gap: 4px;
+  font-size: 13px; color: var(--muted); background: none; border: 0; cursor: pointer;
+  margin-bottom: 12px; padding: 0;
+}
+@media (max-width: 1023px) {
+  .hidden-mobile { display: none; }
+  .tpl-detail { display: none; }
+  .tpl-detail.show-mobile { display: block; }
+  .back-mobile { display: inline-flex; }
+}
+</style>

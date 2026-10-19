@@ -10,6 +10,8 @@ RUN npm ci
 COPY . .
 ARG VITE_API_URL=""
 ENV VITE_API_URL=$VITE_API_URL
+# Generate ikon PWA (PNG) dari script deterministik — biner tidak disimpan di git
+RUN apk add --no-cache python3 py3-pillow && python3 public/icons/generate-icons.py --force
 RUN npm run build
 
 # Stage serve: nginx ringan

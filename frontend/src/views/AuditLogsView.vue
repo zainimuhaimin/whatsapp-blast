@@ -4,6 +4,7 @@ import { auditLogsApi } from '../api/client'
 import { formatDateTime, truncate } from '../utils/format'
 import DataTable from '../components/DataTable.vue'
 import Pagination from '../components/Pagination.vue'
+import Icon from '../components/Icon.vue'
 
 const logs = ref([])
 const total = ref(0)
@@ -66,73 +67,76 @@ onMounted(load)
 
 <template>
   <div>
-    <div class="mb-6">
-      <h1 class="text-2xl font-bold">Audit Log</h1>
-      <p class="text-sm text-slate-500">Jejak semua aksi penting: login, CRUD, ekstraksi AI, konfirmasi/jeda/batal campaign, ubah pengaturan.</p>
+    <div class="title-row">
+      <div>
+        <h1 class="page-title">Audit log</h1>
+        <p class="page-sub">Jejak aksi penting: login, CRUD, ekstraksi AI, konfirmasi/jeda/batal campaign, ubah pengaturan.</p>
+      </div>
+      <span class="toolbar-count">{{ total }} entri</span>
     </div>
 
     <!-- Filter -->
-    <div class="flex flex-wrap items-end gap-3 mb-4">
+    <div class="toolbar">
       <div>
-        <label class="field-label">Aksi</label>
-        <input v-model="actionFilter" class="field-input !w-56" placeholder="mis. campaign.confirm_blast" @keyup.enter="page = 1; load()" />
+        <label class="field-label" for="f-aksi">Aksi</label>
+        <input id="f-aksi" v-model="actionFilter" class="field-input filter-input" placeholder="mis. campaign.confirm_blast" @keyup.enter="page = 1; load()" />
       </div>
       <div>
-        <label class="field-label">Dari tanggal</label>
-        <input v-model="fromDate" type="date" class="field-input !w-auto" />
+        <label class="field-label" for="f-dari">Dari tanggal</label>
+        <input id="f-dari" v-model="fromDate" type="date" class="field-input w-auto" />
       </div>
       <div>
-        <label class="field-label">Sampai tanggal</label>
-        <input v-model="toDate" type="date" class="field-input !w-auto" />
+        <label class="field-label" for="f-sampai">Sampai tanggal</label>
+        <input id="f-sampai" v-model="toDate" type="date" class="field-input w-auto" />
       </div>
-      <button @click="page = 1; load()" class="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium">
-        🔍 Filter
-      </button>
-      <button @click="reset" class="px-4 py-2 rounded-lg border border-slate-300 text-sm font-medium hover:bg-white">
-        Reset
-      </button>
+      <div class="toolbar-btns">
+        <button @click="page = 1; load()" class="btn btn-accent btn-sm">
+          <Icon name="search" :size="14" /> Filter
+        </button>
+        <button @click="reset" class="btn btn-secondary btn-sm">Reset</button>
+      </div>
     </div>
 
     <DataTable
       :loading="loading"
       empty-title="Belum ada audit log"
       empty-hint="Aksi penting yang Anda lakukan akan tercatat di sini."
-      empty-icon="🧾"
+      empty-icon="scroll"
     >
       <template #head>
-        <th class="px-4 py-3 font-semibold">Waktu</th>
-        <th class="px-4 py-3 font-semibold">Aksi</th>
-        <th class="px-4 py-3 font-semibold">Entitas</th>
-        <th class="px-4 py-3 font-semibold">User</th>
-        <th class="px-4 py-3 font-semibold">IP</th>
-        <th class="px-4 py-3 font-semibold">Detail</th>
+        <th>Waktu</th>
+        <th>Aksi</th>
+        <th>Entitas</th>
+        <th>User</th>
+        <th>IP</th>
+        <th>Detail</th>
       </template>
       <template v-if="logs.length">
         <template v-for="l in logs" :key="l.id">
-          <tr class="border-t border-slate-100 hover:bg-slate-50">
-            <td class="px-4 py-2.5 text-xs text-slate-500 whitespace-nowrap">{{ formatDateTime(l.created_at) }}</td>
-            <td class="px-4 py-2.5"><code class="text-xs bg-slate-100 px-1.5 py-0.5 rounded">{{ l.action }}</code></td>
-            <td class="px-4 py-2.5 text-xs">
+          <tr>
+            <td class="card-label text-xs whitespace-nowrap">{{ formatDateTime(l.created_at) }}</td>
+            <td><code class="mono-chip">{{ l.action }}</code></td>
+            <td class="text-xs">
               <span v-if="l.entity_type">{{ l.entity_type }}</span>
-              <span v-if="l.entity_id" class="font-mono text-slate-500"> · {{ truncate(l.entity_id, 12) }}</span>
-              <span v-else-if="!l.entity_type" class="text-slate-400">–</span>
+              <span v-if="l.entity_id" class="mono card-label"> · {{ truncate(l.entity_id, 12) }}</span>
+              <span v-else-if="!l.entity_type" class="cell-muted">–</span>
             </td>
-            <td class="px-4 py-2.5 text-xs font-mono">{{ l.user_id ? truncate(l.user_id, 12) : '–' }}</td>
-            <td class="px-4 py-2.5 text-xs font-mono">{{ l.ip_address || '–' }}</td>
-            <td class="px-4 py-2.5">
+            <td class="mono text-xs">{{ l.user_id ? truncate(l.user_id, 12) : '–' }}</td>
+            <td class="mono text-xs">{{ l.ip_address || '–' }}</td>
+            <td>
               <button
                 v-if="l.metadata"
                 @click="toggleExpand(l.id)"
-                class="text-xs text-emerald-700 underline"
+                class="btn-tertiary text-xs"
               >
                 {{ expanded === l.id ? 'Sembunyikan' : 'Lihat' }}
               </button>
-              <span v-else class="text-xs text-slate-400">–</span>
+              <span v-else class="cell-muted text-xs">–</span>
             </td>
           </tr>
-          <tr v-if="expanded === l.id" class="border-t border-slate-100 bg-slate-50">
-            <td colspan="6" class="px-4 py-2.5">
-              <pre class="text-xs font-mono whitespace-pre-wrap break-all">{{ prettyMeta(l.metadata) }}</pre>
+          <tr v-if="expanded === l.id" class="meta-row">
+            <td colspan="6">
+              <pre class="mono text-xs whitespace-pre-wrap break-all meta-pre">{{ prettyMeta(l.metadata) }}</pre>
             </td>
           </tr>
         </template>
@@ -141,3 +145,23 @@ onMounted(load)
     <Pagination v-if="total > limit" :page="page" :limit="limit" :total="total" @change="(p) => { page = p; load() }" />
   </div>
 </template>
+
+<style scoped>
+.title-row {
+  display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between;
+  gap: 12px; margin-bottom: 24px;
+}
+.toolbar { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; margin-bottom: 12px; }
+.filter-input { width: 224px; }
+.toolbar-btns { display: flex; gap: 8px; align-items: center; }
+.btn-sm { min-height: 34px; }
+.toolbar-count { font-size: 13px; color: var(--muted); }
+.mono-chip {
+  font-family: var(--font-mono); font-size: 12px;
+  background: var(--raised); padding: 2px 6px; border-radius: 4px;
+  white-space: nowrap;
+}
+.cell-muted { color: var(--faint); }
+.meta-row td { background: var(--ground); border-top: 1px solid var(--rule); }
+.meta-pre { margin: 0; color: var(--muted); }
+</style>

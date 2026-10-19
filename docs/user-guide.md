@@ -141,3 +141,19 @@ Selalu uji ke nomor test dulu untuk campaign penting.
 6. **Satu template = satu tujuan** — jangan selundupkan promo di template kategori utility; Meta bisa mengubah kategorinya dan menurunkan rating kualitas Anda.
 7. **Throttling sudah otomatis** (jeda acak 5–15 detik, maks ~300 pesan/jam) — jangan mencoba mengakali dengan menambah worker.
 8. **Jaga kualitas:** banyak block/report dari penerima → limit diturunkan → template di-pause → akun bisa di-suspend permanen.
+
+---
+
+## Install sebagai Aplikasi HP (PWA)
+
+WA Blast bisa di-install sebagai aplikasi di HP (Android & iPhone) — tampil fullscreen seperti aplikasi asli, ada ikon di home screen, dan bisa dibuka tanpa mengetik alamat.
+
+**Android (Chrome):** buka alamat WA Blast → menu ⋮ → **"Install app"** / **"Tambahkan ke Layar utama"** → Install.
+
+**iPhone (Safari):** buka alamat WA Blast → tombol Share → **"Add to Home Screen"** → Add.
+
+Catatan: aplikasi tetap butuh koneksi ke server (data campaign, kontak, dsb. diambil live dari backend). Yang di-install adalah tampilan aplikasinya; service worker hanya mempercepat loading aset statis dan tidak pernah menyimpan data API.
+
+## Tampilan Mobile
+
+Navigasi di HP: tombol menu (☰) di kiri atas membuka seluruh menu. Tabel otomatis berubah menjadi daftar dua baris agar mudah dibaca di layar kecil. Wizard campaign bisa dioperasikan penuh dari HP — tombol Lanjut/Kembali menempel di bawah layar.

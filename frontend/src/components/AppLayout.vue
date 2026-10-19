@@ -1,24 +1,44 @@
 <script setup>
-import { ref } from 'vue'
-import { RouterLink, useRouter } from 'vue-router'
-import { authApi } from '../api/client'
+/**
+ * AppLayout: shell Ruled T-frame — sidebar 232px + top bar 64px (desktop),
+ * top bar 52px + menu sheet layar penuh (mobile).
+ */
+import { ref, computed, onMounted } from 'vue'
+import { RouterLink, useRouter, useRoute } from 'vue-router'
+import { authApi, settingsApi } from '../api/client'
 import { useAuth } from '../stores/useAuth'
 import { useToast } from '../stores/useToast'
+import Icon from './Icon.vue'
+import AppMark from './AppMark.vue'
 
 const router = useRouter()
+const route = useRoute()
 const { user, clear } = useAuth()
 const toast = useToast()
-const sidebarOpen = ref(false)
+const menuOpen = ref(false)
+const provider = ref('')
 
 const nav = [
-  { to: '/', label: 'Dashboard', icon: '📊' },
-  { to: '/campaigns/new', label: 'Campaign Baru', icon: '🚀' },
-  { to: '/contacts', label: 'Kontak', icon: '👥' },
-  { to: '/templates', label: 'Template', icon: '📝' },
-  { to: '/test-numbers', label: 'Nomor Test', icon: '🧪' },
-  { to: '/settings', label: 'Pengaturan', icon: '⚙️' },
-  { to: '/audit-logs', label: 'Audit Log', icon: '🧾' },
+  { to: '/', label: 'Dashboard', icon: 'grid', end: true },
+  { to: '/campaigns/new', label: 'Campaign Baru', icon: 'send' },
+  { to: '/contacts', label: 'Kontak', icon: 'users' },
+  { to: '/templates', label: 'Template', icon: 'chat' },
+  { to: '/test-numbers', label: 'Nomor Test', icon: 'flask' },
+  { to: '/settings', label: 'Pengaturan', icon: 'gear' },
+  { to: '/audit-logs', label: 'Audit Log', icon: 'scroll' },
 ]
+
+const crumb = computed(() => {
+  const m = route.meta || {}
+  const parent = m.parent
+  const title = m.title || ''
+  return parent ? { parent, title } : { parent: '', title }
+})
+
+function isActive(item) {
+  if (item.end) return route.path === '/'
+  return route.path.startsWith(item.to)
+}
 
 async function logout() {
   try {
@@ -29,63 +49,242 @@ async function logout() {
     router.push('/login')
   }
 }
+
+onMounted(async () => {
+  try {
+    const list = await settingsApi.list()
+    const row = (Array.isArray(list) ? list : []).find((s) => s.key === 'wa.provider')
+    provider.value = row ? String(row.value?.value ?? row.value ?? '') : ''
+  } catch {
+    /* top bar tetap tampil tanpa pill provider */
+  }
+})
 </script>
 
 <template>
-  <div class="min-h-screen flex">
-    <!-- Sidebar -->
-    <aside
-      class="fixed inset-y-0 left-0 z-40 w-60 bg-emerald-950 text-emerald-50 flex flex-col
-             transform transition-transform lg:translate-x-0 lg:static"
-      :class="sidebarOpen ? 'translate-x-0' : '-translate-x-full'"
-    >
-      <div class="px-5 py-5 border-b border-emerald-900">
-        <div class="text-xl font-bold">💬 WA Blast</div>
-        <div class="text-xs text-emerald-300 mt-0.5">Tool broadcast WhatsApp</div>
-      </div>
+  <div class="shell">
+    <!-- ============ Sidebar (desktop) ============ -->
+    <aside class="sidebar">
+      <RouterLink to="/" class="brand">
+        <AppMark :size="30" />
+        <span class="brand-text">
+          <span class="brand-name">WA Blast</span>
+          <span class="brand-sub">Broadcast WhatsApp</span>
+        </span>
+      </RouterLink>
 
-      <nav class="flex-1 overflow-y-auto p-3 space-y-1">
+      <nav class="nav">
         <RouterLink
           v-for="item in nav"
           :key="item.to"
           :to="item.to"
-          class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium
-                 hover:bg-emerald-900/60 transition-colors"
-          active-class="bg-emerald-800 text-white"
-          @click="sidebarOpen = false"
+          class="nav-item"
+          :class="{ active: isActive(item) }"
         >
-          <span class="text-lg">{{ item.icon }}</span>
+          <Icon :name="item.icon" class="nav-icon" />
           {{ item.label }}
         </RouterLink>
       </nav>
 
-      <div class="p-4 border-t border-emerald-900">
-        <div class="text-sm font-medium truncate">{{ user?.username || 'Pengguna' }}</div>
-        <button
-          @click="logout"
-          class="mt-2 w-full text-sm px-3 py-2 rounded-lg bg-emerald-900 hover:bg-emerald-800 transition-colors"
-        >
-          Keluar
+      <div class="sidebar-foot">
+        <div class="user-row">
+          <span class="user-avatar">{{ (user?.username || 'P').slice(0, 1).toUpperCase() }}</span>
+          <span class="user-name">{{ user?.username || 'Pengguna' }}</span>
+        </div>
+        <button @click="logout" class="btn-tertiary logout-btn">
+          <Icon name="logout" :size="15" /> Keluar
         </button>
       </div>
     </aside>
 
-    <!-- Overlay mobile -->
-    <div
-      v-if="sidebarOpen"
-      class="fixed inset-0 z-30 bg-black/40 lg:hidden"
-      @click="sidebarOpen = false"
-    ></div>
-
-    <!-- Konten -->
-    <div class="flex-1 min-w-0 flex flex-col">
-      <header class="lg:hidden bg-white border-b border-slate-200 px-4 py-3 flex items-center gap-3 sticky top-0 z-20">
-        <button @click="sidebarOpen = true" class="text-2xl" aria-label="Buka menu">☰</button>
-        <span class="font-semibold">WA Blast</span>
+    <!-- ============ Kolom kanan: top bar + konten ============ -->
+    <div class="main-col">
+      <header class="topbar">
+        <button class="menu-btn" @click="menuOpen = true" aria-label="Buka menu">
+          <Icon name="menu" :size="20" />
+        </button>
+        <div class="crumb">
+          <span v-if="crumb.parent" class="crumb-parent">{{ crumb.parent }} <span class="crumb-sep">/</span> </span>
+          <span class="crumb-current">{{ crumb.title }}</span>
+        </div>
+        <div class="topbar-right">
+          <span v-if="provider" class="pill" :class="provider === 'official' ? 'pill-accent' : 'pill-warning'">
+            {{ provider === 'official' ? 'Resmi' : 'Non-resmi' }}
+          </span>
+          <span class="topbar-user">{{ user?.username || '' }}</span>
+          <button @click="logout" class="icon-btn" aria-label="Keluar" title="Keluar">
+            <Icon name="logout" :size="16" />
+          </button>
+        </div>
       </header>
-      <main class="flex-1 p-4 lg:p-8 max-w-7xl w-full mx-auto">
+
+      <main class="canvas">
         <RouterView />
       </main>
     </div>
+
+    <!-- ============ Menu sheet (mobile) ============ -->
+    <Teleport to="body">
+      <div v-if="menuOpen" class="menu-sheet">
+        <div class="menu-head">
+          <RouterLink to="/" class="brand" @click="menuOpen = false">
+            <AppMark :size="30" />
+            <span class="brand-text">
+              <span class="brand-name">WA Blast</span>
+              <span class="brand-sub">Broadcast WhatsApp</span>
+            </span>
+          </RouterLink>
+          <button class="icon-btn" @click="menuOpen = false" aria-label="Tutup menu">
+            <Icon name="x" :size="20" />
+          </button>
+        </div>
+        <nav class="menu-nav">
+          <RouterLink
+            v-for="item in nav"
+            :key="item.to"
+            :to="item.to"
+            class="nav-item menu-link"
+            :class="{ active: isActive(item) }"
+            @click="menuOpen = false"
+          >
+            <Icon :name="item.icon" class="nav-icon" />
+            {{ item.label }}
+          </RouterLink>
+        </nav>
+        <div class="menu-foot">
+          <div class="user-row">
+            <span class="user-avatar">{{ (user?.username || 'P').slice(0, 1).toUpperCase() }}</span>
+            <span class="user-name">{{ user?.username || 'Pengguna' }}</span>
+          </div>
+          <button @click="logout" class="btn-secondary w-full">
+            <Icon name="logout" :size="15" /> Keluar
+          </button>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
+
+<style scoped>
+.shell {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  background: var(--ground);
+}
+
+/* ---- Sidebar ---- */
+.sidebar {
+  width: var(--sidebar-width);
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--rule);
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  height: 100dvh;
+  background: var(--ground);
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 18px 20px 14px;
+  text-decoration: none;
+  color: var(--text);
+}
+.brand-text { display: flex; flex-direction: column; line-height: 1.25; }
+.brand-name { font-size: 15px; font-weight: 700; letter-spacing: -0.01em; }
+.brand-sub { font-size: 12px; color: var(--faint); }
+.nav { flex: 1; overflow-y: auto; padding: 6px 0 12px; }
+.nav .nav-item { min-height: 34px; margin-bottom: 2px; }
+.sidebar-foot {
+  border-top: 1px solid var(--rule);
+  padding: 12px 12px 16px;
+}
+.user-row { display: flex; align-items: center; gap: 10px; padding: 4px 8px 10px; }
+.user-avatar {
+  width: 28px; height: 28px; border-radius: 50%;
+  background: var(--accent-soft); color: var(--accent-ink);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 600; flex: none;
+}
+.user-name { font-size: 14px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.logout-btn { margin-left: 4px; }
+
+/* ---- Kolom kanan ---- */
+.main-col { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.topbar {
+  height: var(--topbar-height);
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 29px;
+  border-bottom: 1px solid var(--rule);
+  background: var(--ground);
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+.menu-btn { display: none; }
+.crumb { font-size: 14px; min-width: 0; }
+.crumb-parent { color: var(--faint); }
+.crumb-sep { margin: 0 6px; color: var(--control); }
+.crumb-current { font-weight: 600; color: var(--text); }
+.topbar-right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-left: 16px;
+  border-left: 1px solid var(--rule);
+  height: 100%;
+}
+.topbar-user { font-size: 13px; color: var(--muted); }
+.icon-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 34px; height: 34px; border-radius: var(--radius-control);
+  color: var(--muted); border: 1px solid transparent; background: transparent; cursor: pointer;
+}
+.icon-btn:hover { background: var(--raised); color: var(--text); }
+
+.canvas {
+  flex: 1;
+  padding: 36px 29px 48px;
+  max-width: 1280px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+/* ---- Menu sheet (mobile) ---- */
+.menu-sheet {
+  position: fixed; inset: 0; z-index: 60;
+  background: var(--ground);
+  display: flex; flex-direction: column;
+}
+.menu-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--rule);
+}
+.menu-head .brand { padding: 0; }
+.menu-nav { flex: 1; overflow-y: auto; padding: 12px 8px; }
+.menu-nav .menu-link { min-height: 48px; font-size: 15px; }
+.menu-foot { border-top: 1px solid var(--rule); padding: 16px; display: grid; gap: 8px; }
+
+/* ---- Responsif ---- */
+@media (max-width: 1023px) {
+  .sidebar { display: none; }
+  .topbar { height: 52px; padding: 0 16px; }
+  .menu-btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 44px; height: 44px; margin-left: -10px;
+    color: var(--text); background: transparent; border: 0; cursor: pointer;
+  }
+  .topbar-right { border-left: 0; padding-left: 0; }
+  .topbar-user { display: none; }
+  .canvas { padding: 24px 16px 64px; }
+}
+</style>

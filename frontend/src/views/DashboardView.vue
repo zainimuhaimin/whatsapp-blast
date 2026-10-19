@@ -5,6 +5,7 @@ import { campaignsApi } from '../api/client'
 import { formatDateTime, formatNumber } from '../utils/format'
 import DataTable from '../components/DataTable.vue'
 import StatusPill from '../components/StatusPill.vue'
+import Icon from '../components/Icon.vue'
 
 const campaigns = ref([])
 const statsMap = ref({}) // campaign_id -> stats
@@ -67,103 +68,97 @@ onMounted(load)
 
 <template>
   <div>
-    <div class="flex flex-wrap items-center justify-between gap-3 mb-6">
+    <div class="title-row">
       <div>
-        <h1 class="text-2xl font-bold">Dashboard</h1>
-        <p class="text-sm text-slate-500">Ringkasan seluruh campaign broadcast WhatsApp</p>
+        <h1 class="page-title">Dashboard</h1>
+        <p class="page-sub">Ringkasan seluruh campaign broadcast WhatsApp</p>
       </div>
-      <RouterLink
-        to="/campaigns/new"
-        class="px-4 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm transition-colors"
-      >
-        ➕ Campaign Baru
+      <RouterLink to="/campaigns/new" class="btn btn-accent">
+        <Icon name="plus" :size="15" /> Campaign Baru
       </RouterLink>
     </div>
 
-    <!-- Kartu statistik global -->
-    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
-      <div class="bg-white rounded-xl border border-slate-200 p-4">
-        <div class="text-xs text-slate-500">Total Campaign</div>
-        <div class="text-2xl font-bold mt-1">{{ formatNumber(totals.campaigns) }}</div>
+    <!-- KPI: satu wadah dibagi hairline -->
+    <div class="kpi-strip kpi-6">
+      <div class="kpi-cell">
+        <div class="kpi-label">Total campaign</div>
+        <div class="kpi-value num">{{ formatNumber(totals.campaigns) }}</div>
       </div>
-      <div class="bg-white rounded-xl border border-slate-200 p-4">
-        <div class="text-xs text-slate-500">Menunggu</div>
-        <div class="text-2xl font-bold mt-1 text-slate-600">{{ formatNumber(totals.pending) }}</div>
+      <div class="kpi-cell">
+        <div class="kpi-label">Menunggu</div>
+        <div class="kpi-value num">{{ formatNumber(totals.pending) }}</div>
       </div>
-      <div class="bg-white rounded-xl border border-slate-200 p-4">
-        <div class="text-xs text-slate-500">Terkirim</div>
-        <div class="text-2xl font-bold mt-1 text-blue-600">{{ formatNumber(totals.sent) }}</div>
+      <div class="kpi-cell">
+        <div class="kpi-label">Terkirim</div>
+        <div class="kpi-value num">{{ formatNumber(totals.sent) }}</div>
       </div>
-      <div class="bg-white rounded-xl border border-slate-200 p-4">
-        <div class="text-xs text-slate-500">Diterima</div>
-        <div class="text-2xl font-bold mt-1 text-emerald-600">{{ formatNumber(totals.delivered) }}</div>
+      <div class="kpi-cell">
+        <div class="kpi-label">Diterima</div>
+        <div class="kpi-value num">{{ formatNumber(totals.delivered) }}</div>
       </div>
-      <div class="bg-white rounded-xl border border-slate-200 p-4">
-        <div class="text-xs text-slate-500">Dibaca</div>
-        <div class="text-2xl font-bold mt-1 text-teal-600">{{ formatNumber(totals.read) }}</div>
+      <div class="kpi-cell">
+        <div class="kpi-label">Dibaca</div>
+        <div class="kpi-value num">{{ formatNumber(totals.read) }}</div>
       </div>
-      <div class="bg-white rounded-xl border border-slate-200 p-4">
-        <div class="text-xs text-slate-500">Gagal</div>
-        <div class="text-2xl font-bold mt-1 text-red-600">{{ formatNumber(totals.failed) }}</div>
+      <div class="kpi-cell">
+        <div class="kpi-label">Gagal</div>
+        <div class="kpi-value num kpi-bad">{{ formatNumber(totals.failed) }}</div>
       </div>
     </div>
 
     <!-- Filter -->
-    <div class="flex items-center gap-3 mb-4">
-      <label class="text-sm text-slate-600">Filter status:</label>
-      <select v-model="statusFilter" class="field-input !w-auto">
+    <div class="toolbar">
+      <label class="toolbar-label" for="status-filter">Filter status</label>
+      <select id="status-filter" v-model="statusFilter" class="field-input toolbar-select">
         <option v-for="s in STATUSES" :key="s.value" :value="s.value">{{ s.label }}</option>
       </select>
+      <span class="toolbar-count">{{ filtered.length }} campaign</span>
     </div>
 
     <!-- Daftar campaign -->
     <DataTable
       :loading="loading"
       empty-title="Belum ada campaign"
-      empty-hint="Buat campaign pertama Anda lewat wizard 6 langkah."
-      empty-icon="🚀"
+      empty-hint="Buat campaign pertama lewat wizard 6 langkah."
+      empty-icon="send"
     >
       <template #head>
-        <th class="px-4 py-3 font-semibold">Nama</th>
-        <th class="px-4 py-3 font-semibold">Status</th>
-        <th class="px-4 py-3 font-semibold">Provider</th>
-        <th class="px-4 py-3 font-semibold">Mode</th>
-        <th class="px-4 py-3 font-semibold text-right">Menunggu</th>
-        <th class="px-4 py-3 font-semibold text-right">Terkirim</th>
-        <th class="px-4 py-3 font-semibold text-right">Diterima</th>
-        <th class="px-4 py-3 font-semibold text-right">Dibaca</th>
-        <th class="px-4 py-3 font-semibold text-right">Gagal</th>
-        <th class="px-4 py-3 font-semibold">Jadwal</th>
+        <th>Nama</th>
+        <th>Status</th>
+        <th>Provider</th>
+        <th>Mode</th>
+        <th class="num">Menunggu</th>
+        <th class="num">Terkirim</th>
+        <th class="num">Diterima</th>
+        <th class="num">Dibaca</th>
+        <th class="num">Gagal</th>
+        <th>Jadwal</th>
       </template>
       <template v-if="filtered.length">
-        <tr
-          v-for="c in filtered"
-          :key="c.id"
-          class="border-t border-slate-100 hover:bg-slate-50"
-        >
-          <td class="px-4 py-3">
-            <RouterLink :to="`/campaigns/${c.id}`" class="font-medium text-emerald-700 hover:underline">
+        <tr v-for="c in filtered" :key="c.id">
+          <td>
+            <RouterLink :to="`/campaigns/${c.id}`" class="row-link">
               {{ c.name }}
             </RouterLink>
-            <div class="text-xs text-slate-400">dibuat {{ formatDateTime(c.created_at) }}</div>
+            <div class="row-sub">dibuat {{ formatDateTime(c.created_at) }}</div>
           </td>
-          <td class="px-4 py-3"><StatusPill :status="c.status" /></td>
-          <td class="px-4 py-3"><StatusPill :status="c.provider" /></td>
-          <td class="px-4 py-3">
-            <span v-if="c.is_test_mode" class="text-xs font-semibold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">🧪 TEST</span>
-            <span v-else class="text-xs text-slate-400">Produksi</span>
+          <td><StatusPill :status="c.status" /></td>
+          <td><StatusPill :status="c.provider" /></td>
+          <td>
+            <span v-if="c.is_test_mode" class="pill pill-warning">Test</span>
+            <span v-else class="cell-muted">Produksi</span>
           </td>
           <template v-if="statsMap[c.id]">
-            <td class="px-4 py-3 text-right">{{ formatNumber(statsMap[c.id].pending) }}</td>
-            <td class="px-4 py-3 text-right">{{ formatNumber(statsMap[c.id].sent) }}</td>
-            <td class="px-4 py-3 text-right">{{ formatNumber(statsMap[c.id].delivered) }}</td>
-            <td class="px-4 py-3 text-right">{{ formatNumber(statsMap[c.id].read) }}</td>
-            <td class="px-4 py-3 text-right">{{ formatNumber(statsMap[c.id].failed) }}</td>
+            <td class="num">{{ formatNumber(statsMap[c.id].pending) }}</td>
+            <td class="num">{{ formatNumber(statsMap[c.id].sent) }}</td>
+            <td class="num">{{ formatNumber(statsMap[c.id].delivered) }}</td>
+            <td class="num">{{ formatNumber(statsMap[c.id].read) }}</td>
+            <td class="num">{{ formatNumber(statsMap[c.id].failed) }}</td>
           </template>
           <template v-else>
-            <td colspan="5" class="px-4 py-3 text-center text-xs text-slate-400">–</td>
+            <td colspan="5" class="cell-muted text-center">–</td>
           </template>
-          <td class="px-4 py-3 text-xs text-slate-500">
+          <td class="cell-muted text-sm">
             {{ c.send_at ? formatDateTime(c.send_at) : 'Langsung' }}
           </td>
         </tr>
@@ -171,3 +166,43 @@ onMounted(load)
     </DataTable>
   </div>
 </template>
+
+<style scoped>
+.title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+.kpi-strip { margin-bottom: 24px; }
+.kpi-6 { grid-template-columns: repeat(6, 1fr); }
+.kpi-bad { color: var(--negative); }
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.toolbar-label { font-size: 13px; color: var(--muted); }
+.toolbar-select { width: auto; min-height: 34px; }
+.toolbar-count { margin-left: auto; font-size: 13px; color: var(--muted); }
+.row-link {
+  font-weight: 500;
+  color: var(--accent-ink);
+  text-decoration: none;
+}
+.row-link:hover { text-decoration: underline; }
+.cell-muted { color: var(--muted); font-size: 13px; }
+@media (max-width: 1023px) {
+  .kpi-6 { grid-template-columns: repeat(3, 1fr); }
+  .kpi-6 > .kpi-cell:nth-child(3n+1) { border-left: 0; }
+  .kpi-6 > .kpi-cell:nth-child(n+4) { border-top: 1px solid var(--rule); }
+}
+@media (max-width: 639px) {
+  .kpi-6 { grid-template-columns: repeat(2, 1fr); }
+  .kpi-6 > .kpi-cell:nth-child(odd) { border-left: 0; }
+  .kpi-6 > .kpi-cell:nth-child(n+3) { border-top: 1px solid var(--rule); }
+}
+</style>

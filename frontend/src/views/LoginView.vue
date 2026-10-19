@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { authApi } from '../api/client'
 import { useAuth } from '../stores/useAuth'
 import { useToast } from '../stores/useToast'
+import AppMark from '../components/AppMark.vue'
 
 const router = useRouter()
 const { setUser } = useAuth()
@@ -39,15 +40,15 @@ async function submit() {
 </script>
 
 <template>
-  <div class="min-h-screen flex items-center justify-center bg-emerald-950 px-4">
-    <div class="w-full max-w-md bg-white rounded-2xl shadow-2xl p-8">
-      <div class="text-center mb-8">
-        <div class="text-5xl mb-3">💬</div>
-        <h1 class="text-2xl font-bold">WA Blast</h1>
-        <p class="text-sm text-slate-500 mt-1">Masuk untuk mengelola broadcast WhatsApp</p>
+  <div class="login-page">
+    <div class="login-card">
+      <div class="login-brand">
+        <AppMark :size="44" />
+        <h1 class="page-title mt-4">WA Blast</h1>
+        <p class="page-sub">Masuk untuk mengelola broadcast WhatsApp</p>
       </div>
 
-      <form @submit.prevent="submit" class="space-y-4">
+      <form @submit.prevent="submit" class="login-form">
         <div>
           <label class="field-label" for="username">Username</label>
           <input
@@ -73,14 +74,14 @@ async function submit() {
           />
         </div>
 
-        <div v-if="error" class="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+        <div v-if="error" class="login-error" role="alert">
           {{ error }}
         </div>
 
         <button
           type="submit"
           :disabled="loading"
-          class="w-full py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold disabled:opacity-50 transition-colors"
+          class="btn btn-primary btn-block"
         >
           {{ loading ? 'Memproses…' : 'Masuk' }}
         </button>
@@ -88,3 +89,33 @@ async function submit() {
     </div>
   </div>
 </template>
+
+<style scoped>
+.login-page {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: var(--ground);
+}
+.login-card {
+  width: 100%;
+  max-width: 400px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 32px;
+}
+.login-brand { text-align: center; margin-bottom: 28px; display: grid; justify-items: center; }
+.login-form { display: grid; gap: 16px; }
+.login-error {
+  font-size: 13px;
+  color: var(--pill-negative-ink);
+  background: var(--pill-negative-bg);
+  border-radius: var(--radius-control);
+  padding: 10px 12px;
+}
+.btn-block { width: 100%; min-height: 40px; }
+</style>
