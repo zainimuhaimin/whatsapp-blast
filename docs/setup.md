@@ -85,6 +85,12 @@ Saat API pertama kali start, aplikasi membaca `ADMIN_USERNAME` dan `ADMIN_PASSWO
 2. Start stack — user dibuat otomatis saat startup (terverifikasi: `backend/app/main.py` → `on_startup()` memanggil `_seed_admin()`).
 3. Login di frontend dengan kredensial tersebut, lalu segera ganti password yang kuat.
 
+> **Login dinonaktifkan secara default (mode single-user lokal):** `docker-compose.yml` menyetel
+> `AUTH_DISABLED: "true"` pada service `api`, sehingga aplikasi langsung masuk ke dashboard
+> tanpa halaman login (auto-login sebagai user aktif pertama). Cocok untuk pemakaian pribadi
+> di mesin sendiri. Untuk **mengaktifkan lagi proteksi login**, ubah menjadi `"false"` lalu
+> `docker compose up -d --build`.
+
 ## 5. Migrasi Database
 
 Skema database dibuat otomatis via `create_all` SQLAlchemy saat API startup (tidak perlu menjalankan migrasi manual). Ini berlaku untuk instalasi awal/MVP. Terverifikasi: `backend/app/main.py` → `on_startup()` memanggil `Base.metadata.create_all(bind=engine)`.

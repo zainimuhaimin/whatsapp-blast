@@ -13,7 +13,7 @@ import AppMark from './AppMark.vue'
 
 const router = useRouter()
 const route = useRoute()
-const { user, clear } = useAuth()
+const { user, clear, authDisabled } = useAuth()
 const toast = useToast()
 const menuOpen = ref(false)
 const provider = ref('')
@@ -107,7 +107,7 @@ onMounted(async () => {
         <div class="user-chip">
           <span class="user-avatar">{{ (user?.username || 'P').slice(0, 1).toUpperCase() }}</span>
           <span class="user-name">{{ user?.username || 'Pengguna' }}</span>
-          <button @click="logout" class="logout-btn" title="Keluar">
+          <button v-if="!authDisabled" @click="logout" class="logout-btn" title="Keluar">
             <Icon name="logout" :size="14" />
             <span>Keluar</span>
           </button>
@@ -133,7 +133,7 @@ onMounted(async () => {
             {{ provider === 'official' ? 'Resmi' : 'Non-resmi' }}
           </span>
           <span class="topbar-user">{{ user?.username || '' }}</span>
-          <button @click="logout" class="icon-btn" aria-label="Keluar" title="Keluar">
+          <button v-if="!authDisabled" @click="logout" class="icon-btn" aria-label="Keluar" title="Keluar">
             <Icon name="logout" :size="16" />
           </button>
         </div>
@@ -177,7 +177,7 @@ onMounted(async () => {
             <span class="user-avatar">{{ (user?.username || 'P').slice(0, 1).toUpperCase() }}</span>
             <span class="user-name">{{ user?.username || 'Pengguna' }}</span>
           </div>
-          <button @click="logout" class="btn-secondary w-full">
+          <button v-if="!authDisabled" @click="logout" class="btn-secondary w-full">
             <Icon name="logout" :size="15" /> Keluar
           </button>
         </div>

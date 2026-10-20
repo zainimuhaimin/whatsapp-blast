@@ -8,6 +8,7 @@ import jwt
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.core.db import get_db, get_redis
 from app.core.deps import ACCESS_COOKIE, get_current_user
 from app.core.security import (
@@ -91,6 +92,12 @@ def refresh(request: Request, response: Response, db: Session = Depends(get_db))
     access, _, _ = create_access_token(payload["sub"])
     response.set_cookie(ACCESS_COOKIE, access, httponly=True, samesite="lax", path="/")
     return {"ok": True}
+
+
+@router.get("/config")
+def auth_config():
+    """Info publik: apakah login dinonaktifkan (AUTH_DISABLED)."""
+    return {"auth_disabled": settings.AUTH_DISABLED}
 
 
 @router.get("/me", response_model=UserOut)

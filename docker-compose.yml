@@ -32,6 +32,8 @@ services:
       DATABASE_URL: postgresql+psycopg2://wa:wa@postgres:5432/wablast
       REDIS_URL: redis://redis:6379/0
       BAILEYS_API_URL: http://baileys:3001
+      # Login dinonaktifkan (auto-login admin) — ubah ke "false" untuk mengaktifkan login lagi.
+      AUTH_DISABLED: "true"
       # Catatan: BAILEYS_API_KEY sengaja TIDAK di-override di sini —
       # nilainya diambil dari env_file (./backend/.env), satu-satunya sumber.
       # ${...} interpolasi compose membaca shell, bukan env_file, jadi override

@@ -82,6 +82,7 @@ export const authApi = {
     http.post('/auth/login', { username, password }).then((r) => r.data),
   logout: () => http.post('/auth/logout').then((r) => r.data),
   me: () => http.get('/auth/me', { silent: true }).then((r) => r.data),
+  config: () => http.get('/auth/config', { silent: true }).then((r) => r.data),
 }
 
 /* -------------------------------- contacts ------------------------------ */

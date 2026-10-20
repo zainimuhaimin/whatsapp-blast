@@ -84,8 +84,16 @@ router.beforeEach(async (to) => {
     ? `${to.meta.title} — WA Blast`
     : 'WA Blast — Tool Broadcast WhatsApp'
 
+  const { fetchMe, fetchConfig } = useAuth()
+  const disabled = await fetchConfig()
+  if (disabled) {
+    // Login dinonaktifkan: langsung ke dashboard; /login dialihkan ke beranda.
+    if (to.name === 'login') return { name: 'dashboard' }
+    await fetchMe() // tetap isi profil user untuk tampilan (avatar/nama)
+    return true
+  }
+
   if (to.meta.public) return true
-  const { fetchMe } = useAuth()
   const user = await fetchMe()
   if (!user) return { name: 'login' }
   return true

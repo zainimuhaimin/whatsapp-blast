@@ -9,8 +9,22 @@ import { authApi } from '../api/client'
 
 const user = ref(null)
 const checked = ref(false)
+const authDisabled = ref(false)
+const configChecked = ref(false)
 
 export function useAuth() {
+  async function fetchConfig() {
+    if (configChecked.value) return authDisabled.value
+    try {
+      const cfg = await authApi.config()
+      authDisabled.value = !!cfg.auth_disabled
+    } catch {
+      authDisabled.value = false
+    }
+    configChecked.value = true
+    return authDisabled.value
+  }
+
   async function fetchMe() {
     if (checked.value) return user.value
     try {
@@ -36,5 +50,5 @@ export function useAuth() {
     checked.value = false
   }
 
-  return { user, checked, fetchMe, setUser, clear, reset }
+  return { user, checked, authDisabled, fetchConfig, fetchMe, setUser, clear, reset }
 }

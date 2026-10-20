@@ -9,6 +9,10 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "postgresql+psycopg2://wa:wa@localhost:5432/wablast"
     REDIS_URL: str = "redis://localhost:6379/0"
 
+    # Auth: nonaktifkan login (auto-login sebagai admin) — untuk mode single-user lokal.
+    # Aktifkan lagi dengan AUTH_DISABLED=false bila butuh proteksi login.
+    AUTH_DISABLED: bool = False
+
     # Auth JWT
     JWT_SECRET: str = "change-me-min-32-chars"
     JWT_ALGORITHM: str = "HS256"
