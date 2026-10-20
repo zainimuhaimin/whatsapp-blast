@@ -48,6 +48,9 @@ services:
     restart: unless-stopped
 
   frontend:
+    # Mode Tailscale: FRONTEND_BIND_IP=<IP Tailscale VPS> -> port 80 hanya
+    # didengar di interface Tailscale (publik tertutup total).
+    # Mode whitelist IP: 0.0.0.0 (semua interface; filter di firewall host).
     ports: !override
-      - "80:80"
+      - "${FRONTEND_BIND_IP:-0.0.0.0}:80:80"
     restart: unless-stopped
