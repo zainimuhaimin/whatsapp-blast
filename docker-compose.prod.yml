@@ -1,0 +1,53 @@
+# Override PRODUKSI untuk VPS/server publik.
+#
+# Dipakai bersama file utama:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#
+# Perbedaan vs mode lokal:
+#   - Login WAJIB aktif (AUTH_DISABLED=false) — jangan pernah deploy publik
+#     dengan login nonaktif.
+#   - Port backend (8000) & Baileys (3001) hanya bind ke localhost; akses
+#     publik hanya lewat frontend (nginx) port 80.
+#   - Whitelist IP diatur di firewall host (ufw) oleh deploy/install.sh.
+#   - Password Postgres diambil dari env POSTGRES_PASSWORD (dibuat acak oleh
+#     installer; jangan commit ke repo).
+#   - restart: unless-stopped agar stack bangkit otomatis setelah reboot.
+
+services:
+  postgres:
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD belum di-set (dibuat oleh deploy/install.sh)}
+    restart: unless-stopped
+
+  redis:
+    restart: unless-stopped
+
+  api:
+    environment:
+      DATABASE_URL: postgresql+psycopg2://wa:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD belum di-set}@postgres:5432/wablast
+      AUTH_DISABLED: "false"
+    # !override WAJIB: tanpa itu, mapping port dari file utama DITAMBAHKAN
+    # (bukan diganti) dan port 8000 tetap terekspos publik.
+    ports: !override
+      - "127.0.0.1:8000:8000"
+    restart: unless-stopped
+
+  worker:
+    environment:
+      DATABASE_URL: postgresql+psycopg2://wa:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD belum di-set}@postgres:5432/wablast
+    restart: unless-stopped
+
+  beat:
+    environment:
+      DATABASE_URL: postgresql+psycopg2://wa:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD belum di-set}@postgres:5432/wablast
+    restart: unless-stopped
+
+  baileys:
+    ports: !override
+      - "127.0.0.1:3001:3001"
+    restart: unless-stopped
+
+  frontend:
+    ports: !override
+      - "80:80"
+    restart: unless-stopped
