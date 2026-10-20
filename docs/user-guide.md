@@ -17,6 +17,7 @@ Setiap blast selalu melewati **halaman review & konfirmasi** — tidak ada pesan
 Buka menu **Kontak**. Kontak diinput **manual** — tool ini tidak mengambil kontak dari mana pun.
 
 - **Tambah kontak:** isi *Nama*, *Nomor HP* (format internasional tanpa tanda +, mis. `6281234567890`), lalu opsional *Tag* (mis. `pelanggan-lama`, `reseller`) dan *Catatan*.
+- **Data dinamis:** nomor HP adalah kunci kontak; atribut lain apa pun (mis. `alamat`, `nama_pos`, `kota`) disimpan sebagai key–value dinamis lewat editor **Data dinamis** di form kontak. Atribut ini bisa dipakai langsung sebagai variabel campaign (di section Variabel, sumber *Kontak* → daftar *Data dinamis kontak*). Key baru dari upload file / input AI **otomatis ditambahkan** ke data kontak (nilai yang sudah ada tidak ditimpa).
 - **Tag** berguna untuk segmentasi: saat membuat campaign Anda bisa memilih hanya kontak dengan tag tertentu.
 - **Blacklist (opt-out):** bila seseorang minta berhenti menerima pesan (mis. membalas "STOP"), aktifkan blacklist pada kontaknya. Kontak yang di-blacklist **otomatis dikecualikan** dari semua blast berikutnya — Anda tidak perlu menghapusnya.
 - **Jangan hapus kontak** yang sudah pernah dipakai di campaign; gunakan blacklist untuk menonaktifkan.
@@ -142,7 +143,7 @@ Di langkah ini Anda menentukan **sumber** tiap variabel — ada tiga kemungkinan
 | Sumber | Artinya | Contoh |
 |---|---|---|
 | **AI per penerima** | Sudah diisi AI di langkah 4 (mode Daftar penerima) — nilai beda per orang, **tidak perlu mapping manual** | `nama`, `nama_pos`, `alamat_pos` |
-| **Kontak** | Diambil dari data tiap penerima (berbeda-beda) | `nama` → field *Nama* kontak; bisa juga *Nomor HP* atau *Tag* |
+| **Kontak** | Diambil dari data tiap penerima (berbeda-beda) | `nama` → field *Nama* kontak; bisa juga *Nomor HP*, *Tag*, atau key **Data dinamis kontak** (mis. `alamat`, `nama_pos`) |
 | **Campaign** | Satu nilai berlaku untuk semua penerima (hasil AI mode Nilai umum, bisa diedit) | `promo`, `kode` |
 
 Variabel berlabel **Terisi AI per penerima** tampil sebagai kartu info (bukan form) — Anda bisa

@@ -492,6 +492,10 @@ function smartDefault(varName) {
     return { source: 'contact', contact_field: 'phone' }
   if (v === 'tag' || v.includes('tag'))
     return { source: 'contact', contact_field: 'tag' }
+  // Key dinamis di data kontak (alamat, nama_pos, kolom file, hasil AI…):
+  // bila nama variabel persis cocok dengan key yang ada, map ke kontak.
+  if (contactDataKeys.value.includes(varName))
+    return { source: 'contact', contact_field: varName }
   return { source: 'campaign', contact_field: null }
 }
 
@@ -512,6 +516,7 @@ async function refreshRecipientVars() {
 }
 
 async function initMappings() {
+  await loadContactDataKeys()
   let existing = []
   try {
     const data = await campaignsApi.mappings(campaign.value.id)
@@ -542,6 +547,13 @@ async function initMappings() {
 
 /* Nilai per-penerima hasil AI (override): {variable_name: {recipient_count, entries}} */
 const recipientVars = ref({})
+const contactDataKeys = ref([])
+async function loadContactDataKeys() {
+  try {
+    const res = await contactsApi.dataKeys()
+    contactDataKeys.value = res.keys || []
+  } catch { contactDataKeys.value = [] }
+}
 const recipientVarsError = ref(false)
 const aiFilledCount = (varName) => recipientVars.value[varName]?.recipient_count || 0
 
@@ -605,8 +617,8 @@ const mappingErrors = computed(() => {
   for (const m of mappings.value) {
     // Variabel yang sudah terisi AI per penerima tidak butuh mapping manual
     if (aiFilledCount(m.variable_name) > 0) continue
-    if (m.source === 'contact' && !['name', 'phone', 'tag'].includes(m.contact_field)) {
-      errs.push(`Variabel {{${m.variable_name}}}: pilih field kontak (nama/nomor/tag).`)
+    if (m.source === 'contact' && !String(m.contact_field || '').trim()) {
+      errs.push(`Variabel {{${m.variable_name}}}: pilih field kontak.`)
     }
     if (m.source === 'campaign' && !String(m.value ?? '').trim()) {
       errs.push(`Variabel {{${m.variable_name}}}: nilai campaign belum diisi.`)
@@ -1455,7 +1467,11 @@ onMounted(async () => {
                     <option value="name">Nama (name)</option>
                     <option value="phone">Nomor (phone)</option>
                     <option value="tag">Tag</option>
+                    <optgroup v-if="contactDataKeys.length" label="Data dinamis kontak">
+                      <option v-for="k in contactDataKeys" :key="k" :value="k">{{ k }}</option>
+                    </optgroup>
                   </select>
+                  <div v-if="contactDataKeys.length" class="field-hint">Key dinamis berasal dari data kontak (alamat, nama pos, kolom file, hasil AI…).</div>
                 </div>
                 <div v-else>
                   <label class="field-label">Nilai (berlaku untuk semua penerima)</label>

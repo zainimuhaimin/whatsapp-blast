@@ -75,7 +75,8 @@ def create_contact(payload: ContactCreate, request: Request,
     if db.query(Contact).filter(Contact.phone == payload.phone).first():
         raise HTTPException(status_code=409, detail="nomor telepon sudah terdaftar")
     contact = Contact(name=payload.name, phone=payload.phone,
-                      tag=payload.tag, notes=payload.notes)
+                      tag=payload.tag, notes=payload.notes,
+                      data=dict(payload.data or {}))
     db.add(contact)
     db.commit()
     db.refresh(contact)
@@ -121,6 +122,18 @@ def find_or_create_contact(payload: ContactFindOrCreate, request: Request,
     return {"contact": contact, "created": True}
 
 
+@router.get("/data-keys")
+def contact_data_keys(db: Session = Depends(get_db),
+                      user: User = Depends(get_current_user)):
+    """Daftar key dinamis unik dari data JSONB semua kontak (untuk dropdown
+    mapping field kontak di wizard)."""
+    from sqlalchemy import func
+
+    rows = db.query(func.distinct(func.jsonb_object_keys(Contact.data))).all()
+    keys = sorted({r[0] for r in rows if r[0]})
+    return {"keys": keys}
+
+
 @router.get("/{contact_id}", response_model=ContactOut)
 def get_contact(contact_id: UUID, db: Session = Depends(get_db),
                 user: User = Depends(get_current_user)):
@@ -139,6 +152,7 @@ def update_contact(contact_id: UUID, payload: ContactUpdate, request: Request,
     old = {"name": contact.name, "phone": contact.phone, "tag": contact.tag}
     contact.name, contact.phone, contact.tag, contact.notes = (
         payload.name, payload.phone, payload.tag, payload.notes)
+    contact.data = dict(payload.data or {})
     db.commit()
     db.refresh(contact)
     write_audit(db, "contact.update", user_id=user.id, entity_type="contact",

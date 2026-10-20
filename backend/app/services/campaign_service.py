@@ -63,6 +63,17 @@ def get_mappings(db: Session, campaign_id: UUID) -> dict[str, CampaignVariableMa
     return {r.variable_name: r for r in rows}
 
 
+def _contact_value(contact: Contact | None, field: str | None) -> str:
+    """Nilai field kontak: data JSONB (key dinamis) dulu, lalu kolom bawaan."""
+    if contact is None or not field:
+        return ""
+    data = contact.data or {}
+    if field in data and data[field] not in (None, ""):
+        return str(data[field])
+    val = getattr(contact, field, "")
+    return str(val) if val not in (None, "") else ""
+
+
 def resolve_values(
     db: Session, campaign: Campaign, recipient: CampaignRecipient
 ) -> dict[str, str]:
@@ -70,7 +81,8 @@ def resolve_values(
     Hitung nilai tiap variabel untuk satu penerima. Urutan prioritas:
     1. override per-penerima (hasil AI per baris / edit manual) — paling spesifik
     2. source 'campaign' -> nilai hasil AI / edit manual (sama untuk semua penerima)
-    3. source 'contact' -> ambil dari field kontak (name/phone/tag); kosong bila tanpa kontak
+    3. source 'contact' -> ambil dari data JSONB kontak (key dinamis), fallback
+       ke field bawaan (name/phone/tag); kosong bila tanpa kontak
     """
     mappings = get_mappings(db, campaign.id)
     contact = None
@@ -85,7 +97,7 @@ def resolve_values(
         if name in overrides:
             values[name] = overrides[name]
         elif m.source == "contact":
-            values[name] = getattr(contact, m.contact_field, "") if contact and m.contact_field else ""
+            values[name] = _contact_value(contact, m.contact_field)
         else:
             values[name] = m.value or ""
     # Variabel yang hanya punya override per-penerima (tanpa mapping) tetap dipakai

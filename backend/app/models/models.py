@@ -64,6 +64,11 @@ class Contact(Base):
     phone: Mapped[str] = mapped_column(String(20), unique=True, nullable=False)
     tag: Mapped[str | None] = mapped_column(String(64), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Atribut dinamis (alamat, nama_pos, kolom file upload, hasil AI, dsb.):
+    # phone adalah kunci; semua atribut lain hidup di sini sebagai key-value bebas.
+    data: Mapped[dict] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb")
+    )
     is_blacklisted: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default=text("false")
     )

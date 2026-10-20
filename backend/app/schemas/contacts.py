@@ -12,6 +12,7 @@ class ContactCreate(BaseModel):
     phone: str = Field(min_length=1, max_length=20)
     tag: str | None = Field(default=None, max_length=64)
     notes: str | None = None
+    data: dict[str, str] = Field(default_factory=dict)
 
     @field_validator("phone")
     @classmethod
@@ -24,6 +25,7 @@ class ContactUpdate(BaseModel):
     phone: str = Field(min_length=1, max_length=20)
     tag: str | None = Field(default=None, max_length=64)
     notes: str | None = None
+    data: dict[str, str] = Field(default_factory=dict)
 
     @field_validator("phone")
     @classmethod
@@ -43,6 +45,7 @@ class ContactOut(BaseModel):
     phone: str
     tag: str | None
     notes: str | None
+    data: dict = Field(default_factory=dict)
     is_blacklisted: bool
     created_at: datetime
     updated_at: datetime

@@ -541,7 +541,12 @@ def _apply_recipient_rows(db: Session, campaign: Campaign,
     `variables` (variabel template) yang disimpan sebagai override.
 
     rows: [{phone, name, variables{var: value}}]
-    Return: (added, created_contacts, matched_contacts, skipped[])
+    Return: (added, created_contacts, matched_contacts, skipped[], contact_ids[])
+    contact_ids: id kontak yang jadi penerima (dedup) — untuk auto-check picker.
+
+    Efek samping ke master kontak: key variabel yang BELUM ADA di
+    contact.data ditambahkan (pengayaan dinamis); key yang sudah ada TIDAK
+    ditimpa — phone adalah kunci, data JSONB tumbuh mengikuti input.
     """
     def _sig(phone_: str, vars_: dict) -> tuple:
         return (phone_, tuple(sorted((k, str(v or "")) for k, v in vars_.items())))
@@ -590,12 +595,80 @@ def _apply_recipient_rows(db: Session, campaign: Campaign,
         if cid_str not in _seen_cids:
             _seen_cids.add(cid_str)
             contact_ids.append(cid_str)
+        # Perkaya master kontak: tambah key yang belum ada ke data JSONB.
+        # Assign ulang dict agar SQLAlchemy mendeteksi perubahan JSONB.
+        _d = dict(contact.data or {})
+        _enriched = False
+        for _var, _val in item_vars.items():
+            if _val not in (None, "") and _var not in _d:
+                _d[_var] = str(_val)
+                _enriched = True
+        if _enriched:
+            contact.data = _d
         for var, val in item_vars.items():
             db.add(CampaignRecipientVariable(
                 recipient_id=recipient.id, variable_name=var, value=val))
         existing_sigs.add(_sig(phone, item_vars))
         added += 1
     return added, created, matched, skipped, contact_ids
+
+
+def _apply_rows_to_test_numbers(db: Session, campaign: Campaign,
+                                rows: list[dict], variables: set[str]):
+    """
+    Varian penyimpanan daftar penerima untuk MODE TEST (dipakai AI-apply &
+    file-apply): nilai variabel tiap baris ditempel ke NOMOR TEST yang aktif
+    (round-robin bila baris lebih banyak dari nomor test), TANPA pernah
+    menyimpan nomor asli sebagai penerima dan TANPA membuat/menyentuh kontak.
+    Menjamin janji banner wizard: mode test tidak menyentuh kontak asli.
+
+    Return: (added, skipped[]) — created/matched kontak selalu 0 di mode test.
+    """
+    test_phones = [tn.phone for tn in
+                   db.query(TestNumber).filter(TestNumber.is_active == True).all()]
+    if not test_phones:
+        raise HTTPException(
+            status_code=400,
+            detail=("Mode test aktif tapi belum ada nomor test yang terdaftar. "
+                    "Daftarkan dulu nomor test di menu Koneksi WA sebelum "
+                    "menerapkan data penerima."),
+        )
+
+    def _sig(phone_: str, vars_: dict) -> tuple:
+        return (phone_, tuple(sorted((k, str(v or "")) for k, v in vars_.items())))
+
+    existing_sigs = set()
+    for r in db.query(CampaignRecipient).filter(
+            CampaignRecipient.campaign_id == campaign.id).all():
+        ov = {rv.variable_name: (rv.value or "") for rv in (r.variable_overrides or [])}
+        existing_sigs.add(_sig(r.phone, ov))
+
+    added = 0
+    skipped: list[str] = []
+    for i, item in enumerate(rows):
+        phone_raw = (item.get("phone") or "").strip()
+        try:
+            normalize_phone(phone_raw)
+        except ValueError:
+            skipped.append(f"{phone_raw or '(kosong)'}: nomor tidak valid, dilewati")
+            continue
+        test_phone = test_phones[i % len(test_phones)]
+        item_vars = {k: str(v or "") for k, v in (item.get("variables") or {}).items()
+                     if k in variables}
+        if _sig(test_phone, item_vars) in existing_sigs:
+            skipped.append(f"{phone_raw}: baris identik sudah ada di nomor test, dilewati")
+            continue
+        recipient = CampaignRecipient(
+            campaign_id=campaign.id, contact_id=None,
+            phone=test_phone, status="pending")
+        db.add(recipient)
+        db.flush()
+        for var, val in item_vars.items():
+            db.add(CampaignRecipientVariable(
+                recipient_id=recipient.id, variable_name=var, value=val))
+        existing_sigs.add(_sig(test_phone, item_vars))
+        added += 1
+    return added, skipped
 
 
 @router.post("/{campaign_id}/ai-apply-recipients", response_model=AIApplyRecipientsResponse)
@@ -613,12 +686,20 @@ def ai_apply_recipients(campaign_id: UUID, payload: AIApplyRecipientsRequest,
     variables = set(campaign.template_version.variables or [])
     rows = [{"phone": item.phone, "name": item.name,
              "variables": dict(item.variables or {})} for item in payload.items]
-    added, created, matched, skipped, contact_ids = _apply_recipient_rows(db, campaign, rows, variables)
+    if campaign.is_test_mode:
+        # Mode test: nilai variabel ditempel ke nomor test aktif —
+        # nomor asli TIDAK disimpan sebagai penerima, kontak tidak disentuh.
+        added, skipped = _apply_rows_to_test_numbers(db, campaign, rows, variables)
+        created, matched, contact_ids = 0, 0, []
+    else:
+        added, created, matched, skipped, contact_ids = _apply_recipient_rows(
+            db, campaign, rows, variables)
     db.commit()
     write_audit(db, "campaign.ai_apply_recipients", user_id=user.id,
                 entity_type="campaign", entity_id=str(campaign.id),
                 metadata={"added": added, "created_contacts": created,
-                          "matched_contacts": matched, "skipped": skipped},
+                          "matched_contacts": matched, "skipped": skipped,
+                          "is_test_mode": campaign.is_test_mode},
                 ip_address=_ip(request))
     return AIApplyRecipientsResponse(
         added=added, created_contacts=created,
@@ -664,7 +745,14 @@ def apply_file(campaign_id: UUID, payload: dict, request: Request,
                  if k != phone_variable and v not in (None, "")}
         rows.append({"phone": str(row.get(phone_variable) or ""),
                      "name": name, "variables": vars_})
-    added, created, matched, skipped, contact_ids = _apply_recipient_rows(db, campaign, rows, variables)
+    if campaign.is_test_mode:
+        # Mode test: nilai variabel ditempel ke nomor test aktif —
+        # nomor asli TIDAK disimpan sebagai penerima, kontak tidak disentuh.
+        added, skipped = _apply_rows_to_test_numbers(db, campaign, rows, variables)
+        created, matched, contact_ids = 0, 0, []
+    else:
+        added, created, matched, skipped, contact_ids = _apply_recipient_rows(
+            db, campaign, rows, variables)
     db.commit()
     write_audit(db, "campaign.apply_file", user_id=user.id,
                 entity_type="campaign", entity_id=str(campaign.id),
@@ -847,6 +935,21 @@ def build_recipients(campaign_id: UUID, payload: RecipientsBuildRequest,
     campaign = _get_campaign_or_404(db, campaign_id)
     _require_editable(campaign)
 
+    removed_non_test = 0
+    if campaign.is_test_mode:
+        # Pengaman: buang penerima bernomor asli yang terlanjur masuk
+        # (mis. data diterapkan sebelum mode test dinyalakan) — di mode
+        # test hanya nomor test aktif yang boleh dikirim.
+        test_phones_now = {
+            tn.phone for tn in
+            db.query(TestNumber).filter(TestNumber.is_active == True).all()
+        }
+        q = db.query(CampaignRecipient).filter(
+            CampaignRecipient.campaign_id == campaign.id)
+        if test_phones_now:
+            q = q.filter(~CampaignRecipient.phone.in_(test_phones_now))
+        removed_non_test = q.delete(synchronize_session=False)
+
     existing_phones = {
         row[0]
         for row in db.query(CampaignRecipient.phone)
@@ -897,6 +1000,7 @@ def build_recipients(campaign_id: UUID, payload: RecipientsBuildRequest,
                 metadata={"added": added, "skipped_blacklisted": skipped_blacklisted,
                           "skipped_duplicate": skipped_duplicate,
                           "skipped_no_data": skipped_no_data, "total": total,
+                          "removed_non_test": removed_non_test,
                           "is_test_mode": campaign.is_test_mode},
                 ip_address=_ip(request))
     return RecipientsBuildResponse(added=added,

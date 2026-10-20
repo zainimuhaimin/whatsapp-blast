@@ -69,6 +69,25 @@ def _seed_settings() -> None:
         db.close()
 
 
+def _ensure_contact_data_column() -> None:
+    """
+    DB lama (sebelum 2026-10-20) belum punya kolom contacts.data (JSONB
+    atribut dinamis). create_all() tidak menambah kolom ke tabel yang sudah
+    ada, jadi tambahkan manual. Aman & idempoten.
+    """
+    from sqlalchemy import text
+
+    db = SessionLocal()
+    try:
+        db.execute(text(
+            "ALTER TABLE contacts "
+            "ADD COLUMN IF NOT EXISTS data JSONB NOT NULL DEFAULT '{}'::jsonb"
+        ))
+        db.commit()
+    finally:
+        db.close()
+
+
 def _drop_legacy_recipient_unique() -> None:
     """
     DB lama (dibuat sebelum 2026-10-19) punya UNIQUE(campaign_id, phone) di
@@ -96,6 +115,7 @@ def _drop_legacy_recipient_unique() -> None:
 @app.on_event("startup")
 def on_startup() -> None:
     Base.metadata.create_all(bind=engine)
+    _ensure_contact_data_column()
     _drop_legacy_recipient_unique()
     _seed_admin()
     _seed_settings()

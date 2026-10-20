@@ -96,6 +96,7 @@ export const contactsApi = {
   toggleBlacklist: (id, is_blacklisted) =>
     http.patch(`/contacts/${id}/blacklist`, { is_blacklisted }).then((r) => r.data),
   findOrCreate: (payload) => http.post('/contacts/find-or-create', payload).then((r) => r.data),
+  dataKeys: () => http.get('/contacts/data-keys').then((r) => r.data),
 }
 
 /* -------------------------------- templates ----------------------------- */

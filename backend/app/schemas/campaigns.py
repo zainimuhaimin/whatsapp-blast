@@ -134,7 +134,10 @@ class RecipientVariablesUpdate(BaseModel):
 class MappingItem(BaseModel):
     variable_name: str = Field(min_length=1, max_length=64)
     source: str = Field(description="contact|campaign")
-    contact_field: str | None = Field(default=None, description="name|phone|tag")
+    contact_field: str | None = Field(
+        default=None,
+        description="name|phone|tag atau key dinamis dari data JSONB kontak",
+    )
     value: str | None = None
 
     @field_validator("source")
@@ -147,8 +150,9 @@ class MappingItem(BaseModel):
     @field_validator("contact_field")
     @classmethod
     def _contact_field(cls, v: str | None) -> str | None:
-        if v is not None and v not in CONTACT_FIELDS:
-            raise ValueError(f"contact_field harus salah satu dari {sorted(CONTACT_FIELDS)}")
+        # Field bawaan (name/phone/tag) ATAU key dinamis di data JSONB kontak.
+        if v is not None and not v.strip():
+            raise ValueError("contact_field tidak boleh kosong")
         return v
 
 
